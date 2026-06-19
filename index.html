@@ -626,17 +626,95 @@
       return m ? +m[1] : 0;
     }
 
+    // Area-weighted centroid of a closed polygon (pts = flat [x0,y0,x1,y1,...]).
+    function polygonAreaCentroid(pts) {
+      const n = pts.length / 2;
+      let A = 0, cx = 0, cy = 0;
+      for (let i = 0, j = n - 1; i < n; j = i++) {
+        const xi = pts[i*2], yi = pts[i*2+1], xj = pts[j*2], yj = pts[j*2+1];
+        const cross = xi * yj - xj * yi;
+        A += cross; cx += (xi + xj) * cross; cy += (yi + yj) * cross;
+      }
+      A /= 2;
+      if (Math.abs(A) < 1e-6) {
+        let sx = 0, sy = 0;
+        for (let i = 0; i < pts.length; i += 2) { sx += pts[i]; sy += pts[i+1]; }
+        return { cx: sx / n, cy: sy / n };
+      }
+      return { cx: cx / (6 * A), cy: cy / (6 * A) };
+    }
+
+    // For a closed polygon whose area centroid lies outside the shape (e.g. a
+    // crescent), find the interior point closest to (cx, cy) by scanning
+    // horizontal lines outward from cy, finding interior x-spans at each level,
+    // and returning the point in the nearest span closest to cx.
+    function closestInteriorPoint(pts, cx, cy) {
+      const ys = [cy];
+      for (let d = 1; d <= 300; d++) { ys.push(cy + d, cy - d); }
+      const n = pts.length / 2;
+      for (const y of ys) {
+        const xs = [];
+        for (let i = 0, j = n - 1; i < n; j = i++) {
+          const yi = pts[i*2+1], yj = pts[j*2+1];
+          if ((yi <= y && yj > y) || (yj <= y && yi > y)) {
+            const xi = pts[i*2], xj = pts[j*2];
+            xs.push(xi + (y - yi) / (yj - yi) * (xj - xi));
+          }
+        }
+        xs.sort((a, b) => a - b);
+        let bestPx = null, bestDist = Infinity;
+        for (let k = 0; k + 1 < xs.length; k += 2) {
+          const px = Math.max(xs[k], Math.min(xs[k+1], cx));
+          const dist = Math.hypot(px - cx, y - cy);
+          if (dist < bestDist) { bestDist = dist; bestPx = px; }
+        }
+        if (bestPx !== null) return { cx: bestPx, cy: y };
+      }
+      return { cx, cy };
+    }
+
+    // Point at 50% of arc length along a polyline, interpolated within the
+    // straddling segment so the cursor lands exactly on the path.
+    function polylineMidpoint(pts) {
+      const n = pts.length / 2;
+      if (n === 0) return { cx: 0, cy: 0 };
+      if (n === 1) return { cx: pts[0], cy: pts[1] };
+      const segs = [];
+      let total = 0;
+      for (let i = 1; i < n; i++) {
+        const len = Math.hypot(pts[i*2] - pts[(i-1)*2], pts[i*2+1] - pts[(i-1)*2+1]);
+        segs.push(len); total += len;
+      }
+      const half = total / 2;
+      let acc = 0;
+      for (let i = 0; i < segs.length; i++) {
+        if (acc + segs[i] >= half) {
+          const t = segs[i] > 0 ? (half - acc) / segs[i] : 0;
+          return {
+            cx: pts[i*2]     + t * (pts[(i+1)*2]   - pts[i*2]),
+            cy: pts[i*2+1]   + t * (pts[(i+1)*2+1] - pts[i*2+1])
+          };
+        }
+        acc += segs[i];
+      }
+      return { cx: pts[(n-1)*2], cy: pts[(n-1)*2+1] };
+    }
+
     function shapeCenter(el) {
       switch (el.tagName) {
         case 'circle':
           return { cx: +el.getAttribute('cx'), cy: +el.getAttribute('cy') };
         case 'ellipse':
           return { cx: +el.getAttribute('cx'), cy: +el.getAttribute('cy') };
-        case 'polygon': case 'polyline': {
+        case 'polygon': {
           const pts = el.getAttribute('points').trim().split(/[\s,]+/).map(Number);
-          let sx = 0, sy = 0;
-          for (let i = 0; i < pts.length; i += 2) { sx += pts[i]; sy += pts[i+1]; }
-          return { cx: sx / (pts.length / 2), cy: sy / (pts.length / 2) };
+          const { cx, cy } = polygonAreaCentroid(pts);
+          if (pointInPolygon(cx, cy, pts)) return { cx, cy };
+          return closestInteriorPoint(pts, cx, cy);
+        }
+        case 'polyline': {
+          const pts = el.getAttribute('points').trim().split(/[\s,]+/).map(Number);
+          return polylineMidpoint(pts);
         }
         case 'g': {
           const children = Array.from(el.children);
