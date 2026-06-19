@@ -238,9 +238,10 @@
   <!-- Main display area -->
   <div id="display-area">
     <div id="display-wrapper">
-      <h1 class="sr-only">Live Display</h1>
-      <canvas id="visual-canvas" width="600" height="400"></canvas>
-      <div id="visual-msg"></div>
+      <h1 class="sr-only">Visual Display</h1>
+      <canvas id="visual-canvas" width="600" height="400" aria-hidden="true"></canvas>
+      <h2 class="sr-only">Message Display</h2>
+      <div id="visual-msg" role="region" aria-label="Message display"></div>
     </div>
   </div>
 
@@ -259,12 +260,12 @@
     <h2 class="sr-only">Controls</h2>
     <span id="app-name">DotSVG</span>
     <div id="ble-controls">
-      <span id="status-dot">&#9679;</span>
+      <span id="status-dot" aria-hidden="true">&#9679;</span>
       <span id="conn-status">not connected</span>
       <button id="btn-connect">Connect</button>
       <button id="btn-disconnect" disabled>Disconnect</button>
     </div>
-    <button id="btn-edit-svg" class="util-btn">Edit SVG</button>
+    <button id="btn-edit-svg" class="util-btn">Show SVG</button>
     <button id="btn-help" class="util-btn">Help</button>
   </div>
 
@@ -317,11 +318,13 @@
     const helpBody      = document.getElementById('help-body');
     const btnCloseHelp  = document.getElementById('btn-close-help');
 
-    // Edit SVG toggle
+    // Show/Hide SVG toggle
     btnEditSvg.addEventListener('click', () => {
-      const open = svgPanel.hidden;
-      svgPanel.hidden = !open;
-      btnEditSvg.classList.toggle('active', open);
+      const opening = svgPanel.hidden;
+      svgPanel.hidden = !opening;
+      btnEditSvg.textContent = opening ? 'Hide SVG' : 'Show SVG';
+      btnEditSvg.classList.toggle('active', opening);
+      if (opening) document.getElementById('main-svg').focus();
     });
 
     // Help dialog
