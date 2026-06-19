@@ -141,18 +141,7 @@
     button:not(:disabled):hover { background: #4a4a4a; }
     .util-btn.active { background: #1e4d9e; border-color: #3c6fcc; color: #fff; }
 
-    /* ── Help modal ─────────────────────────────────── */
-    #help-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.72);
-      z-index: 200;
-      align-items: center;
-      justify-content: center;
-      padding: 1rem;
-    }
-    #help-overlay.open { display: flex; }
+    /* ── Help dialog ─────────────────────────────────── */
     #help-dialog {
       background: #2a2a2a;
       border: 1px solid #555;
@@ -162,6 +151,11 @@
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      padding: 0;
+      color: #ccc;
+    }
+    #help-dialog::backdrop {
+      background: rgba(0,0,0,0.72);
     }
     #help-header {
       display: flex;
@@ -271,19 +265,17 @@
       <button id="btn-disconnect" disabled>Disconnect</button>
     </div>
     <button id="btn-edit-svg" class="util-btn">Edit SVG</button>
-    <button id="btn-help" class="util-btn">?</button>
+    <button id="btn-help" class="util-btn">Help</button>
   </div>
 
-  <!-- Help modal -->
-  <div id="help-overlay">
-    <div id="help-dialog">
-      <div id="help-header">
-        <h2>DotSVG Help</h2>
-        <button id="btn-close-help">&#x2715;</button>
-      </div>
-      <div id="help-body">Loading…</div>
+  <!-- Help dialog -->
+  <dialog id="help-dialog" aria-labelledby="help-dialog-title">
+    <div id="help-header">
+      <h2 id="help-dialog-title">DotSVG Help</h2>
+      <button id="btn-close-help" aria-label="Close help">&#x2715;</button>
     </div>
-  </div>
+    <div id="help-body">Loading…</div>
+  </dialog>
 
   <!-- Rename dialog -->
   <div id="rename-overlay">
@@ -321,7 +313,7 @@
     const btnEditSvg    = document.getElementById('btn-edit-svg');
     const svgPanel      = document.getElementById('svg-panel');
     const btnHelp       = document.getElementById('btn-help');
-    const helpOverlay   = document.getElementById('help-overlay');
+    const helpDialog    = document.getElementById('help-dialog');
     const helpBody      = document.getElementById('help-body');
     const btnCloseHelp  = document.getElementById('btn-close-help');
 
@@ -332,10 +324,10 @@
       btnEditSvg.classList.toggle('active', open);
     });
 
-    // Help modal
+    // Help dialog
     let helpLoaded = false;
     function openHelp() {
-      helpOverlay.classList.add('open');
+      helpDialog.showModal();
       if (!helpLoaded) {
         fetch('./help.md')
           .then(r => r.ok ? r.text() : Promise.reject(r.status))
@@ -343,10 +335,11 @@
           .catch(() => { helpBody.textContent = 'Could not load help.md'; });
       }
     }
-    function closeHelp() { helpOverlay.classList.remove('open'); }
+    function closeHelp() { helpDialog.close(); btnHelp.focus(); }
     btnHelp.addEventListener('click', openHelp);
     btnCloseHelp.addEventListener('click', closeHelp);
-    helpOverlay.addEventListener('click', e => { if (e.target === helpOverlay) closeHelp(); });
+    // Native <dialog> handles Esc internally; sync our closeHelp to restore focus
+    helpDialog.addEventListener('cancel', e => { e.preventDefault(); closeHelp(); });
 
     function renderMarkdown(md) {
       const lines = md.split('\n');
@@ -2523,14 +2516,11 @@
 
     btnMainSend.addEventListener('click', sendSvg);
 
-    // ? key opens help; Esc closes it (also closes rename overlay)
+    // ? key opens help
     document.addEventListener('keydown', e => {
-      if (e.key === '?' && !helpOverlay.classList.contains('open') &&
+      if (e.key === '?' && !helpDialog.open &&
           !document.getElementById('rename-overlay').classList.contains('open')) {
         openHelp();
-        e.preventDefault();
-      } else if (e.key === 'Escape' && helpOverlay.classList.contains('open')) {
-        closeHelp();
         e.preventDefault();
       }
     });

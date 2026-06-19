@@ -70,9 +70,9 @@ Press **n** to place a new object at the current cursor position. Navigate optio
 
 - **Circle:** Current position marks the center. Move cursor with dots 2, 3, 5, 6 to set radius. Message shows object name and current radius (offset from center). Confirm with **dots 456 chord**; cancel with **dots 123 chord**.
 - **Ellipse:** Defined by two foci and one edge point. Focus 1 is the current cursor position. Move cursor to f2 using dots 2, 3, 5, and 6, then confirm with **dot 4**. Move cursor to define a point on the edge; the ellipse adjusts in real time. Press **dot 4** or **dots 456 chord** to confirm. Press **dots 123 chord** to cancel at any time. If f1 and f2 are the same point, the result is a circle.
-- **Diamond:** Cursor marks the center. Move to set the horizontal radius, then the vertical radius. Message shows name and dimensions. Confirm with **dots 456 chord**; cancel with **dots 123 chord**.
+- **Diamond:** Placed immediately as a small diamond centered on the current cursor position. No size parameters.
 - **Quadrilateral:** Cursor marks the first corner. Move to the diagonally opposite corner. Message shows name and dimensions. Confirm with **dots 456 chord**; cancel with **dots 123 chord**.
-- **Triangle:** Cursor marks the first vertex. Move to place the second vertex with **dot 4**, then move to place the third vertex and confirm with **dots 456 chord**. Cancel with **dots 123 chord** at any time.
+- **Triangle:** Placed immediately as a small triangle centered on the current cursor position. No size parameters.
 - **Path:** Cursor marks the first vertex. Move cursor and press **dot 4** to place each subsequent vertex. When 2 or more vertices exist, **dots 456 chord** prompts "close fig? y/n" — **y** closes the shape into a polygon, **n** leaves it open as a polyline. **dots 123 chord** at the prompt returns to drawing.
 
 ## Grouping Items
@@ -101,4 +101,4 @@ Click **Connect** in the utility bar to scan for a DotPad device via Bluetooth. 
 
 ## Help
 
-Press **?** or click the **?** button to show this help. Press **Esc** or click ✕ to close.
+Press **?** or click the **Help** button to show this help. Press **Esc** or click the **Close help** button to close.
