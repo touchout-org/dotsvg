@@ -1,0 +1,2540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DotSVG</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #1e1e1e;
+      color: #ddd;
+      margin: 0; padding: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    /* ── Secure context warning ─────────────────────── */
+    #secure-warning {
+      display: none;
+      background: #3a2e00;
+      border-bottom: 1px solid #a07000;
+      padding: 0.5rem 1rem;
+      font-size: 0.85rem;
+      color: #ffd;
+      flex-shrink: 0;
+    }
+
+    /* ── Display area ───────────────────────────────── */
+    #display-area {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.75rem 0.75rem 0.5rem;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    #display-wrapper {
+      display: flex;
+      flex-direction: column;
+      width: min(100%, calc((100dvh - 8rem) * 1.5));
+      max-width: 100%;
+    }
+
+    #visual-canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      border: 1px solid #555;
+      border-radius: 4px 4px 0 0;
+      background: #fff;
+      image-rendering: pixelated;
+    }
+
+    #visual-msg {
+      font-family: monospace;
+      font-size: 1.05rem;
+      letter-spacing: 0.05em;
+      white-space: pre;
+      background: #111;
+      color: #e8e8e8;
+      padding: 0.4rem 0.65rem;
+      border: 1px solid #555;
+      border-top: 1px solid #333;
+      border-radius: 0 0 4px 4px;
+      min-height: 2rem;
+      overflow: hidden;
+    }
+    #visual-msg:empty::before { content: '\00a0'; }
+
+    /* ── SVG editor panel ───────────────────────────── */
+    #svg-panel {
+      background: #252525;
+      border-top: 1px solid #444;
+      padding: 0.6rem 0.75rem;
+      flex-shrink: 0;
+    }
+    #svg-panel[hidden] { display: none; }
+    #svg-panel textarea {
+      width: 100%;
+      height: 6rem;
+      font-family: monospace;
+      font-size: 0.85rem;
+      padding: 0.35rem;
+      background: #1a1a1a;
+      color: #ccc;
+      border: 1px solid #444;
+      border-radius: 4px;
+      resize: vertical;
+      margin-bottom: 0.4rem;
+    }
+    .editor-row { display: flex; gap: 0.5rem; align-items: center; }
+    #render-status { font-size: 0.82rem; color: #888; }
+    #render-status.error { color: #f88; }
+
+    /* ── Utility bar ────────────────────────────────── */
+    #util-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      padding: 0.45rem 0.75rem;
+      background: #2a2a2a;
+      border-top: 1px solid #444;
+      flex-shrink: 0;
+    }
+
+    #app-name {
+      font-weight: bold;
+      font-size: 1rem;
+      color: #fff;
+      margin-right: 0.25rem;
+      user-select: none;
+    }
+
+    #ble-controls { display: flex; align-items: center; gap: 0.4rem; }
+    #status-dot { font-size: 0.95rem; color: #555; transition: color 0.3s; }
+    #status-dot.connected { color: #4c4; }
+    #conn-status { font-size: 0.8rem; color: #777; white-space: nowrap; }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px;
+      padding: 0; margin: -1px; overflow: hidden;
+      clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+
+    button {
+      padding: 0.28rem 0.75rem;
+      border: 1px solid #666;
+      border-radius: 4px;
+      background: #3a3a3a;
+      color: #ddd;
+      cursor: pointer;
+      font-size: 0.88rem;
+    }
+    button:disabled { opacity: 0.35; cursor: default; }
+    button:not(:disabled):hover { background: #4a4a4a; }
+    .util-btn.active { background: #1e4d9e; border-color: #3c6fcc; color: #fff; }
+
+    /* ── Help modal ─────────────────────────────────── */
+    #help-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.72);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    #help-overlay.open { display: flex; }
+    #help-dialog {
+      background: #2a2a2a;
+      border: 1px solid #555;
+      border-radius: 8px;
+      width: min(680px, 100%);
+      max-height: 88vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #help-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.6rem 1rem;
+      border-bottom: 1px solid #444;
+      flex-shrink: 0;
+    }
+    #help-header h2 { margin: 0; font-size: 1.05rem; color: #fff; }
+    #btn-close-help {
+      padding: 0.15rem 0.45rem;
+      background: transparent;
+      border-color: #666;
+      font-size: 1rem;
+      color: #aaa;
+    }
+    #btn-close-help:hover { color: #fff; background: #444; }
+    #help-body {
+      overflow-y: auto;
+      padding: 0.5rem 1.1rem 1rem;
+      font-size: 0.9rem;
+      line-height: 1.65;
+      color: #ccc;
+    }
+    #help-body h2 {
+      color: #fff; font-size: 1rem;
+      margin: 1.1rem 0 0.3rem;
+      border-bottom: 1px solid #444;
+      padding-bottom: 0.25rem;
+    }
+    #help-body h3 { color: #ddd; font-size: 0.9rem; margin: 0.8rem 0 0.25rem; }
+    #help-body p  { margin: 0.25rem 0; }
+    #help-body ul { margin: 0.25rem 0 0.4rem 1.1rem; padding: 0; }
+    #help-body li { margin: 0.15rem 0; }
+    #help-body strong { color: #fff; }
+    #help-body code { background: #333; padding: 0 4px; border-radius: 3px; font-size: 0.88em; }
+
+    /* ── Rename dialog ──────────────────────────────── */
+    #rename-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    #rename-overlay.open { display: flex; }
+    #rename-dialog {
+      background: #2a2a2a;
+      border: 1px solid #555;
+      border-radius: 8px;
+      padding: 1.4rem;
+      min-width: 300px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.7rem;
+    }
+    #rename-dialog h3 { margin: 0; font-size: 1rem; color: #fff; }
+    #rename-input {
+      width: 100%;
+      padding: 0.38rem 0.5rem;
+      font-size: 1rem;
+      background: #1a1a1a;
+      color: #eee;
+      border: 1px solid #555;
+      border-radius: 4px;
+    }
+    #rename-dialog .dlg-buttons { display: flex; gap: 0.5rem; justify-content: flex-end; }
+  </style>
+</head>
+<body>
+
+  <div id="secure-warning">
+    Web Bluetooth requires a <strong>secure context</strong> (HTTPS or localhost).
+    Opening via <code>file://</code> will not work. Serve with: <code>npx serve .</code>
+  </div>
+
+  <!-- Main display area -->
+  <div id="display-area">
+    <div id="display-wrapper">
+      <h1 class="sr-only">Live Display</h1>
+      <canvas id="visual-canvas" width="600" height="400"></canvas>
+      <div id="visual-msg"></div>
+    </div>
+  </div>
+
+  <!-- Collapsible SVG editor -->
+  <div id="svg-panel" hidden>
+    <textarea id="main-svg" spellcheck="false"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400">
+</svg></textarea>
+    <div class="editor-row">
+      <button id="btn-main-send">Render &amp; Send</button>
+      <span id="render-status"></span>
+    </div>
+  </div>
+
+  <!-- Utility bar -->
+  <div id="util-bar">
+    <h2 class="sr-only">Controls</h2>
+    <span id="app-name">DotSVG</span>
+    <div id="ble-controls">
+      <span id="status-dot">&#9679;</span>
+      <span id="conn-status">not connected</span>
+      <button id="btn-connect">Connect</button>
+      <button id="btn-disconnect" disabled>Disconnect</button>
+    </div>
+    <button id="btn-edit-svg" class="util-btn">Edit SVG</button>
+    <button id="btn-help" class="util-btn">?</button>
+  </div>
+
+  <!-- Help modal -->
+  <div id="help-overlay">
+    <div id="help-dialog">
+      <div id="help-header">
+        <h2>DotSVG Help</h2>
+        <button id="btn-close-help">&#x2715;</button>
+      </div>
+      <div id="help-body">Loading…</div>
+    </div>
+  </div>
+
+  <!-- Rename dialog -->
+  <div id="rename-overlay">
+    <div id="rename-dialog">
+      <h3>Rename Object</h3>
+      <input id="rename-input" type="text" autocomplete="off" spellcheck="false"/>
+      <div class="dlg-buttons">
+        <button id="rename-cancel-btn">Cancel</button>
+        <button id="rename-ok-btn">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import {
+      DotPadSDK,
+      DotPadScanner,
+      DisplayMode,
+      DataCodes
+    } from './web-sdk-3.0.0/DotPadSDK-3.0.0.js';
+
+    const sdk     = new DotPadSDK();
+    const scanner = new DotPadScanner();
+    let currentDevice = null;
+
+    const btnConnect    = document.getElementById('btn-connect');
+    const btnDisconnect = document.getElementById('btn-disconnect');
+    const statusDot     = document.getElementById('status-dot');
+    const connStatus    = document.getElementById('conn-status');
+    const mainSvg       = document.getElementById('main-svg');
+    const btnMainSend   = document.getElementById('btn-main-send');
+    const renderStatus  = document.getElementById('render-status');
+    const visualMsg     = document.getElementById('visual-msg');
+    const visualCanvas  = document.getElementById('visual-canvas');
+    const btnEditSvg    = document.getElementById('btn-edit-svg');
+    const svgPanel      = document.getElementById('svg-panel');
+    const btnHelp       = document.getElementById('btn-help');
+    const helpOverlay   = document.getElementById('help-overlay');
+    const helpBody      = document.getElementById('help-body');
+    const btnCloseHelp  = document.getElementById('btn-close-help');
+
+    // Edit SVG toggle
+    btnEditSvg.addEventListener('click', () => {
+      const open = svgPanel.hidden;
+      svgPanel.hidden = !open;
+      btnEditSvg.classList.toggle('active', open);
+    });
+
+    // Help modal
+    let helpLoaded = false;
+    function openHelp() {
+      helpOverlay.classList.add('open');
+      if (!helpLoaded) {
+        fetch('./help.md')
+          .then(r => r.ok ? r.text() : Promise.reject(r.status))
+          .then(md => { helpBody.innerHTML = renderMarkdown(md); helpLoaded = true; })
+          .catch(() => { helpBody.textContent = 'Could not load help.md'; });
+      }
+    }
+    function closeHelp() { helpOverlay.classList.remove('open'); }
+    btnHelp.addEventListener('click', openHelp);
+    btnCloseHelp.addEventListener('click', closeHelp);
+    helpOverlay.addEventListener('click', e => { if (e.target === helpOverlay) closeHelp(); });
+
+    function renderMarkdown(md) {
+      const lines = md.split('\n');
+      let html = '';
+      for (const line of lines) {
+        const t = line
+          .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+          .replace(/`([^`]+)`/g, '<code>$1</code>')
+          .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        if (/^## /.test(line))      html += `<h2>${t.slice(3)}</h2>`;
+        else if (/^### /.test(line)) html += `<h3>${t.slice(4)}</h3>`;
+        else if (/^- /.test(line))   html += `<ul><li>${t.slice(2)}</li></ul>`;
+        else if (t.trim())           html += `<p>${t}</p>`;
+      }
+      // merge consecutive <ul> blocks
+      return html.replace(/<\/ul>\s*<ul>/g, '');
+    }
+
+    if (!navigator.bluetooth) {
+      document.getElementById('secure-warning').style.display = 'block';
+    }
+
+    // ── NABCC 8-dot Computer Braille lookup table ────────────────────────────
+    // Index = ASCII code - 0x20 (covers 0x20 space through 0x7E tilde)
+    // Value = 8-dot braille byte: bit0=dot1, bit1=dot2, bit2=dot3, bit3=dot4,
+    //                              bit4=dot5, bit5=dot6, bit6=dot7, bit7=dot8
+    // Source: BRLTTY en-nabcc.ttb (North American Braille Computer Code)
+    const NABCC = new Uint8Array([
+      0x00, // 0x20  (space)
+      0x2E, // 0x21  !  dots 2,3,4,6
+      0x10, // 0x22  "  dot 5
+      0x3C, // 0x23  #  dots 3,4,5,6
+      0x2B, // 0x24  $  dots 1,2,4,6
+      0x29, // 0x25  %  dots 1,4,6
+      0x2F, // 0x26  &  dots 1,2,3,4,6
+      0x04, // 0x27  '  dot 3
+      0x37, // 0x28  (  dots 1,2,3,5,6
+      0x3E, // 0x29  )  dots 2,3,4,5,6
+      0x21, // 0x2A  *  dots 1,6
+      0x2C, // 0x2B  +  dots 3,4,6
+      0x20, // 0x2C  ,  dot 6
+      0x24, // 0x2D  -  dots 3,6
+      0x28, // 0x2E  .  dots 4,6
+      0x0C, // 0x2F  /  dots 3,4
+      0x34, // 0x30  0  dots 3,5,6
+      0x02, // 0x31  1  dot 2
+      0x06, // 0x32  2  dots 2,3
+      0x12, // 0x33  3  dots 2,5
+      0x32, // 0x34  4  dots 2,5,6
+      0x22, // 0x35  5  dots 2,6
+      0x16, // 0x36  6  dots 2,3,5
+      0x36, // 0x37  7  dots 2,3,5,6
+      0x26, // 0x38  8  dots 2,3,6
+      0x14, // 0x39  9  dots 3,5
+      0x31, // 0x3A  :  dots 1,5,6
+      0x30, // 0x3B  ;  dots 5,6
+      0x23, // 0x3C  <  dots 1,2,6
+      0x3F, // 0x3D  =  dots 1,2,3,4,5,6
+      0x1C, // 0x3E  >  dots 3,4,5
+      0x39, // 0x3F  ?  dots 1,4,5,6
+      0x48, // 0x40  @  dots 4,7
+      0x41, // 0x41  A  dots 1,7
+      0x43, // 0x42  B  dots 1,2,7
+      0x49, // 0x43  C  dots 1,4,7
+      0x59, // 0x44  D  dots 1,4,5,7
+      0x51, // 0x45  E  dots 1,5,7
+      0x4B, // 0x46  F  dots 1,2,4,7
+      0x5B, // 0x47  G  dots 1,2,4,5,7
+      0x53, // 0x48  H  dots 1,2,5,7
+      0x4A, // 0x49  I  dots 2,4,7
+      0x5A, // 0x4A  J  dots 2,4,5,7
+      0x45, // 0x4B  K  dots 1,3,7
+      0x47, // 0x4C  L  dots 1,2,3,7
+      0x4D, // 0x4D  M  dots 1,3,4,7
+      0x5D, // 0x4E  N  dots 1,3,4,5,7
+      0x55, // 0x4F  O  dots 1,3,5,7
+      0x4F, // 0x50  P  dots 1,2,3,4,7
+      0x5F, // 0x51  Q  dots 1,2,3,4,5,7
+      0x57, // 0x52  R  dots 1,2,3,5,7
+      0x4E, // 0x53  S  dots 2,3,4,7
+      0x5E, // 0x54  T  dots 2,3,4,5,7
+      0x65, // 0x55  U  dots 1,3,6,7
+      0x67, // 0x56  V  dots 1,2,3,6,7
+      0x7A, // 0x57  W  dots 2,4,5,6,7
+      0x6D, // 0x58  X  dots 1,3,4,6,7
+      0x7D, // 0x59  Y  dots 1,3,4,5,6,7
+      0x75, // 0x5A  Z  dots 1,3,5,6,7
+      0x6A, // 0x5B  [  dots 2,4,6,7
+      0x73, // 0x5C  \  dots 1,2,5,6,7
+      0x7B, // 0x5D  ]  dots 1,2,4,5,6,7
+      0x58, // 0x5E  ^  dots 4,5,7
+      0x38, // 0x5F  _  dots 4,5,6
+      0x08, // 0x60  `  dot 4
+      0x01, // 0x61  a  dot 1
+      0x03, // 0x62  b  dots 1,2
+      0x09, // 0x63  c  dots 1,4
+      0x19, // 0x64  d  dots 1,4,5
+      0x11, // 0x65  e  dots 1,5
+      0x0B, // 0x66  f  dots 1,2,4
+      0x1B, // 0x67  g  dots 1,2,4,5
+      0x13, // 0x68  h  dots 1,2,5
+      0x0A, // 0x69  i  dots 2,4
+      0x1A, // 0x6A  j  dots 2,4,5
+      0x05, // 0x6B  k  dots 1,3
+      0x07, // 0x6C  l  dots 1,2,3
+      0x0D, // 0x6D  m  dots 1,3,4
+      0x1D, // 0x6E  n  dots 1,3,4,5
+      0x15, // 0x6F  o  dots 1,3,5
+      0x0F, // 0x70  p  dots 1,2,3,4
+      0x1F, // 0x71  q  dots 1,2,3,4,5
+      0x17, // 0x72  r  dots 1,2,3,5
+      0x0E, // 0x73  s  dots 2,3,4
+      0x1E, // 0x74  t  dots 2,3,4,5
+      0x25, // 0x75  u  dots 1,3,6
+      0x27, // 0x76  v  dots 1,2,3,6
+      0x3A, // 0x77  w  dots 2,4,5,6
+      0x2D, // 0x78  x  dots 1,3,4,6
+      0x3D, // 0x79  y  dots 1,3,4,5,6
+      0x35, // 0x7A  z  dots 1,3,5,6
+      0x2A, // 0x7B  {  dots 2,4,6
+      0x33, // 0x7C  |  dots 1,2,5,6
+      0x3B, // 0x7D  }  dots 1,2,4,5,6
+      0x18, // 0x7E  ~  dots 4,5
+    ]);
+
+    // Convert a text string to a DotPad message-line hex string.
+    // Each character becomes one braille cell = 1 raw NABCC byte (2 hex chars).
+    // displayTextData with TextMode applies brailleToGraphic internally, so we
+    // send raw braille bytes here and let the SDK handle the pin mapping.
+    function textToMessageHex(text, numCells) {
+      let hex = '';
+      for (let i = 0; i < numCells; i++) {
+        const ch   = i < text.length ? text[i] : ' ';
+        const code = ch.charCodeAt(0);
+        const b    = (code >= 0x20 && code <= 0x7E) ? NABCC[code - 0x20] : 0x00;
+        hex += b.toString(16).padStart(2, '0').toUpperCase();
+      }
+      return hex;
+    }
+
+    // ── SVG renderer ────────────────────────────────────────────────────────
+    async function renderSvgToHex(svgInput, numCols, numRows) {
+      const width  = numCols * 2;
+      const height = numRows * 4;
+
+      const canvas = document.createElement('canvas');
+      canvas.width  = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, width, height);
+
+      const trimmed = svgInput.trim();
+      const svgString = trimmed.startsWith('<svg')
+        ? trimmed
+        : `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}">${trimmed}</svg>`;
+
+      const parser = new DOMParser();
+      const doc    = parser.parseFromString(svgString, 'image/svg+xml');
+      const svgEl  = doc.documentElement;
+
+      if (svgEl.querySelector('parsererror')) throw new Error('Invalid SVG — check syntax');
+
+      svgEl.setAttribute('width',  String(width));
+      svgEl.setAttribute('height', String(height));
+      if (!svgEl.hasAttribute('viewBox')) {
+        svgEl.setAttribute('viewBox', `0 0 ${width} ${height}`);
+      }
+
+      const blob = new Blob(
+        [new XMLSerializer().serializeToString(svgEl)],
+        { type: 'image/svg+xml' }
+      );
+      const url = URL.createObjectURL(blob);
+
+      await new Promise((resolve, reject) => {
+        const img  = new Image();
+        img.onload  = () => { ctx.drawImage(img, 0, 0, width, height); URL.revokeObjectURL(url); resolve(); };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Failed to render SVG')); };
+        img.src = url;
+      });
+
+      const { data } = ctx.getImageData(0, 0, width, height);
+      const nibbles  = new Uint8Array(width * numRows);
+
+      for (let y = 0; y < height; y++) {
+        const band = Math.floor(y / 4);
+        const bit  = y % 4;
+        for (let x = 0; x < width; x++) {
+          const i   = (y * width + x) * 4;
+          const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          if (data[i + 3] > 127 && lum < 128) {
+            nibbles[(x ^ 1) + band * width] |= (1 << bit);
+          }
+        }
+      }
+
+      return Array.from(nibbles, n => n.toString(16).toUpperCase()).join('');
+    }
+
+    // ── UI state helpers ────────────────────────────────────────────────────
+    function setConnectedState(device) {
+      currentDevice = device;
+      statusDot.className    = 'connected';
+      connStatus.textContent = 'connected';
+      btnConnect.disabled    = true;
+      btnDisconnect.disabled = false;
+      btnMainSend.disabled   = false;
+    }
+
+    function setDisconnectedState() {
+      currentDevice          = null;
+      statusDot.className    = '';
+      connStatus.textContent = 'not connected';
+      btnConnect.disabled    = false;
+      btnDisconnect.disabled = true;
+      btnMainSend.disabled   = true;
+    }
+
+    // ── Braille key chord → letter ───────────────────────────────────────────
+    // Buttons: LP=dot3, 8=dot2, 4=dot1, 2=dot4, 1=dot5, RP=dot6
+    // Key label format examples: "LP +0", "RP +4", "AP +12", "+7"
+    (function buildReverseNabcc() {
+      window._nabccReverse = {};
+      for (let ch = 0x61; ch <= 0x7A; ch++) {
+        window._nabccReverse[NABCC[ch - 0x20]] = String.fromCharCode(ch);
+      }
+    })();
+
+    // Parse a key event label into a 6-dot braille byte.
+    // Buttons: 4=dot1, 8=dot2, LP=dot3, 2=dot4, 1=dot5, RP=dot6
+    function labelToByte6(label) {
+      const hasLP = /\bLP\b/.test(label) || /\bAP\b/.test(label);
+      const hasRP = /\bRP\b/.test(label) || /\bAP\b/.test(label);
+      const mPlus = label.match(/\+\s*(\d+)/);
+      const mBare = !mPlus && label.match(/^\d+$/);
+      const num   = mPlus ? parseInt(mPlus[1], 10) : mBare ? parseInt(mBare[0], 10) : 0;
+      return ((num & 4)  ? 0x01 : 0) |  // dot 1
+             ((num & 8)  ? 0x02 : 0) |  // dot 2
+             (hasLP      ? 0x04 : 0) |  // dot 3
+             ((num & 2)  ? 0x08 : 0) |  // dot 4
+             ((num & 1)  ? 0x10 : 0) |  // dot 5
+             (hasRP      ? 0x20 : 0);   // dot 6
+    }
+
+    function byte6ToLetter(byte6) {
+      return window._nabccReverse[byte6] || null;
+    }
+
+    // ── Canvas & viewport ────────────────────────────────────────────────────
+    const CANVAS_W = 600, CANVAS_H = 400;
+    let viewport = { x: 0, y: 0, w: CANVAS_W, h: CANVAS_H };
+
+    // ── Cursor ────────────────────────────────────────────────────────────────
+    let cursor       = { x: CANVAS_W / 2, y: CANVAS_H / 2 };
+    let cursorVisible = true;
+    let lastMoveDir   = null;
+    let moveDirCount  = 0;
+
+    // ── SVG canvas ────────────────────────────────────────────────────────────
+    // svgDoc is the source of truth. renderCanvas builds a composed render SVG
+    // (with selection masking and cursor overlay) without mutating svgDoc.
+    const SVG_NS      = 'http://www.w3.org/2000/svg';
+    const INITIAL_SVG = `<svg xmlns="${SVG_NS}" viewBox="0 0 ${CANVAS_W} ${CANVAS_H}">
+  <circle data-name="circle001" id="circle001" cx="150" cy="100" r="80" fill="none" stroke="black" stroke-width="10"/>
+  <polygon data-name="square001" id="square001" points="360,30 500,30 500,170 360,170" fill="none" stroke="black" stroke-width="10"/>
+  <polygon data-name="diamond001" id="diamond001" points="450,220 370,300 450,380 530,300" fill="none" stroke="black" stroke-width="10"/>
+  <polygon data-name="triangle001" id="triangle001" points="150,220 50,370 250,370" fill="none" stroke="black" stroke-width="10"/>
+</svg>`;
+
+    const svgParser     = new DOMParser();
+    const svgSerializer = new XMLSerializer();
+    let svgDoc = svgParser.parseFromString(INITIAL_SVG, 'image/svg+xml');
+    mainSvg.value = INITIAL_SVG;
+
+    function svgShapes() {
+      return Array.from(svgDoc.documentElement.children).filter(el =>
+        ['circle','rect','polygon','ellipse','path','line','polyline','g'].includes(el.tagName)
+      );
+    }
+
+    function getEllipseAngle(el) {
+      const m = (el.getAttribute('transform') || '').match(/rotate\s*\(\s*([+-]?\d*\.?\d+)/);
+      return m ? +m[1] : 0;
+    }
+
+    function shapeCenter(el) {
+      switch (el.tagName) {
+        case 'circle':
+          return { cx: +el.getAttribute('cx'), cy: +el.getAttribute('cy') };
+        case 'ellipse':
+          return { cx: +el.getAttribute('cx'), cy: +el.getAttribute('cy') };
+        case 'polygon': case 'polyline': {
+          const pts = el.getAttribute('points').trim().split(/[\s,]+/).map(Number);
+          let sx = 0, sy = 0;
+          for (let i = 0; i < pts.length; i += 2) { sx += pts[i]; sy += pts[i+1]; }
+          return { cx: sx / (pts.length / 2), cy: sy / (pts.length / 2) };
+        }
+        case 'g': {
+          const children = Array.from(el.children);
+          if (children.length === 0) return { cx: 0, cy: 0 };
+          let sx = 0, sy = 0;
+          for (const child of children) { const c = shapeCenter(child); sx += c.cx; sy += c.cy; }
+          return { cx: sx / children.length, cy: sy / children.length };
+        }
+        default: return { cx: 0, cy: 0 };
+      }
+    }
+
+    function shapesSorted() {
+      const band = CANVAS_H * 0.20;
+      return svgShapes().sort((a, b) => {
+        const ca = shapeCenter(a), cb = shapeCenter(b);
+        const rowA = Math.round(ca.cy / band);
+        const rowB = Math.round(cb.cy / band);
+        if (rowA !== rowB) return rowA - rowB;
+        if (ca.cx !== cb.cx) return ca.cx - cb.cx;
+        return 0;  // stable sort preserves document (z) order for co-located shapes
+      });
+    }
+
+    function shapeName(el) {
+      return el.getAttribute('data-name')
+        || (el.getAttribute('id') || '').replace(/-\d+$/, '')
+        || el.tagName;
+    }
+
+    function selectedShapes() {
+      return svgShapes().filter(el => el.getAttribute('data-selected') === 'true');
+    }
+
+    function clearAllSelection() {
+      svgShapes().forEach(el => { el.removeAttribute('data-selected'); el.setAttribute('fill', 'none'); });
+    }
+
+    function addToSelection(el) {
+      el.setAttribute('data-selected', 'true');
+      el.setAttribute('fill', 'black');
+    }
+
+    function removeFromSelection(el) {
+      el.removeAttribute('data-selected');
+      el.setAttribute('fill', 'none');
+    }
+
+    // data-selected is the canonical selection marker; fill reflects it visually.
+    function setSelection(id) {
+      clearAllSelection();
+      if (id) {
+        const el = svgDoc.getElementById(id);
+        if (el) addToSelection(el);
+      }
+    }
+
+    // Clone el with a specific fill for composed rendering (does not mutate svgDoc).
+    function serializeWithFill(el, fill) {
+      const clone = el.cloneNode(true);
+      clone.setAttribute('fill', fill);
+      return svgSerializer.serializeToString(clone);
+    }
+
+    // Post-process pixel buffer to stamp the cursor.
+    // Over a filled region: lower the 5×5 box (tactile "dent").
+    // Over empty space: raise the 5-pixel crosshair lines.
+    function applyCursorToPixels(pixels, w, h, cx, cy) {
+      const set = (x, y, v) => { if (x >= 0 && x < w && y >= 0 && y < h) pixels[y*w+x] = v; };
+      // When center is inside a shaded region, clear the 5×5 box first
+      // so the crosshair is legible against the dark background.
+      if (cx >= 0 && cx < w && cy >= 0 && cy < h && pixels[cy*w+cx]) {
+        for (let dy = -2; dy <= 2; dy++)
+          for (let dx = -2; dx <= 2; dx++)
+            set(cx+dx, cy+dy, 0);
+      }
+      // Always draw the crosshair on top.
+      for (let d = -2; d <= 2; d++) {
+        set(cx+d, cy, 1);
+        set(cx, cy+d, 1);
+      }
+    }
+
+    // Custom rasterizer: converts SVG shapes directly to binary display pixels,
+    // bypassing the browser's SVG renderer to get pixel-accurate, 1-pixel-thin edges.
+    // Fill + edge passes (1-3) for the given viewport `vp`, writing into `pixels`.
+    // Factored out of renderCanvas so the overview screen can rasterize the whole
+    // canvas at 100% while the real viewport stays untouched.
+    function getLeafShapes(el) {
+      if (el.tagName === 'g') return Array.from(el.children).flatMap(child => getLeafShapes(child));
+      return [el];
+    }
+
+    function rasterizeShapes(pixels, displayW, displayH, vp) {
+      const shapes   = svgShapes();
+      const selected = selectedShapes();
+      const maxSelArea = selected.length > 0 ? Math.max(...selected.map(el => shapeArea(el))) : 0;
+
+      const scaleX = vp.w / displayW;
+      const scaleY = vp.h / displayH;
+
+      // Canvas coordinate of the center of display pixel (dx, dy)
+      const canX = dx => vp.x + (dx + 0.5) * scaleX;
+      const canY = dy => vp.y + (dy + 0.5) * scaleY;
+
+      // Canvas coordinate → display-pixel index (inverse of canX/canY).
+      const pixX = cx => (cx - vp.x) / scaleX - 0.5;
+      const pixY = cy => (cy - vp.y) / scaleY - 0.5;
+
+      // Pass 1: all selected shape interiors → black
+      for (const sel of selected) {
+        for (let dy = 0; dy < displayH; dy++) {
+          const py = canY(dy);
+          for (let dx = 0; dx < displayW; dx++) {
+            if (pointInShape(sel, canX(dx), py))
+              pixels[dy * displayW + dx] = 1;
+          }
+        }
+      }
+
+      // Pass 2: unselected shapes smaller than the largest selected shape punch through → white
+      if (selected.length > 0) {
+        for (const el of shapes) {
+          if (selected.includes(el)) continue;
+          if (shapeArea(el) >= maxSelArea) continue;
+          for (let dy = 0; dy < displayH; dy++) {
+            const py = canY(dy);
+            for (let dx = 0; dx < displayW; dx++) {
+              if (pointInShape(el, canX(dx), py))
+                pixels[dy * displayW + dx] = 0;
+            }
+          }
+        }
+      }
+
+      // Pass 3: all leaf shape edges → black (Bresenham lines / midpoint ellipse,
+      // both direction-symmetric integer algorithms — no floor() bias).
+      for (const el of shapes) {
+        for (const leaf of getLeafShapes(el)) {
+          if (leaf.tagName === 'circle') {
+            const cx = +leaf.getAttribute('cx'), cy = +leaf.getAttribute('cy'), r = +leaf.getAttribute('r');
+            drawEllipsePixels(pixels, displayW, displayH,
+              pixX(cx), pixY(cy), r / scaleX, r / scaleY);
+          } else if (leaf.tagName === 'ellipse') {
+            const cx = +leaf.getAttribute('cx'), cy = +leaf.getAttribute('cy');
+            const rx = +leaf.getAttribute('rx'), ry = +leaf.getAttribute('ry');
+            const angle = getEllipseAngle(leaf);
+            drawRotatedEllipsePixels(pixels, displayW, displayH,
+              pixX(cx), pixY(cy), rx / scaleX, ry / scaleY, angle);
+          } else if (leaf.tagName === 'polygon' || leaf.tagName === 'polyline') {
+            const pts = leaf.getAttribute('points').trim().split(/[\s,]+/).map(Number);
+            const n = pts.length / 2;
+            const segs = leaf.tagName === 'polygon' ? n : n - 1;
+            for (let i = 0; i < segs; i++) {
+              const j = (i + 1) % n;
+              drawLinePixels(pixels, displayW, displayH,
+                pixX(pts[2*i]), pixY(pts[2*i+1]), pixX(pts[2*j]), pixY(pts[2*j+1]));
+            }
+          }
+        }
+      }
+    }
+
+    // ── Visual canvas (sighted mirror of the tactile display) ─────────────────
+    function paintVisualCanvas(shapePixels, displayW, displayH, curDx, curDy) {
+      if (!visualCanvas) return;
+      const ctx = visualCanvas.getContext('2d');
+      const sx = visualCanvas.width  / displayW;
+      const sy = visualCanvas.height / displayH;
+      const pw = Math.ceil(sx), ph = Math.ceil(sy);
+
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, visualCanvas.width, visualCanvas.height);
+
+      ctx.fillStyle = '#000';
+      for (let dy = 0; dy < displayH; dy++) {
+        for (let dx = 0; dx < displayW; dx++) {
+          if (shapePixels[dy * displayW + dx])
+            ctx.fillRect(Math.floor(dx * sx), Math.floor(dy * sy), pw, ph);
+        }
+      }
+
+      if (curDx !== null) {
+        ctx.fillStyle = '#00aa00';
+        for (let d = -2; d <= 2; d++) {
+          const px = curDx + d;
+          if (px >= 0 && px < displayW)
+            ctx.fillRect(Math.floor(px * sx), Math.floor(curDy * sy), pw, ph);
+          const py = curDy + d;
+          if (py >= 0 && py < displayH)
+            ctx.fillRect(Math.floor(curDx * sx), Math.floor(py * sy), pw, ph);
+        }
+      }
+    }
+
+    function paintVisualCanvasOverview(shapePixels, displayW, displayH, vx0, vy0, vx1, vy1) {
+      if (!visualCanvas) return;
+      const ctx = visualCanvas.getContext('2d');
+      const sx = visualCanvas.width  / displayW;
+      const sy = visualCanvas.height / displayH;
+      const pw = Math.ceil(sx), ph = Math.ceil(sy);
+
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, visualCanvas.width, visualCanvas.height);
+
+      ctx.fillStyle = '#000';
+      for (let dy = 0; dy < displayH; dy++) {
+        for (let dx = 0; dx < displayW; dx++) {
+          if (shapePixels[dy * displayW + dx])
+            ctx.fillRect(Math.floor(dx * sx), Math.floor(dy * sy), pw, ph);
+        }
+      }
+
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([sx * 3, sx * 2]);
+      ctx.strokeRect(vx0 * sx, vy0 * sy, (vx1 - vx0) * sx, (vy1 - vy0) * sy);
+      ctx.setLineDash([]);
+    }
+
+    // Encode binary pixels into DotPad nibble hex and send to the device.
+    function sendPixels(pixels, displayW, numCols, numRows, device) {
+      const nibbles = new Uint8Array(displayW * numRows);
+      for (let y = 0; y < numRows * 4; y++) {
+        const band = Math.floor(y / 4), bit = y % 4;
+        for (let x = 0; x < displayW; x++) {
+          if (pixels[y * displayW + x])
+            nibbles[(x ^ 1) + band * displayW] |= (1 << bit);
+        }
+      }
+      const hex = Array.from(nibbles, n => n.toString(16).toUpperCase()).join('');
+      const zeros = '00'.repeat(numCols * numRows);
+      sdk.displayGraphicData(zeros, device, DisplayMode.GraphicMode);
+      sdk.displayGraphicData(hex,   device, DisplayMode.GraphicMode);
+    }
+
+    function renderCanvas(device) {
+      if (!device) return;
+      const numCols  = device.numberCellColumns;
+      const numRows  = device.numberCellRows;
+      const displayW = numCols * 2;
+      const displayH = numRows * 4;
+
+      // pixels[y * displayW + x]: 0 = white (dot down), 1 = black (dot up)
+      const pixels = new Uint8Array(displayW * displayH);
+
+      rasterizeShapes(pixels, displayW, displayH, viewport);
+      const shapeOnlyPixels = new Uint8Array(pixels);  // snapshot before cursor is applied
+
+      // Circle-in-progress overlay: live circle from center to cursor radius.
+      if (appMode === 'circle-draw' && circleCenter) {
+        const scaleX   = viewport.w / displayW;
+        const scaleY   = viewport.h / displayH;
+        const toPixX   = cx => (cx - viewport.x) / scaleX - 0.5;
+        const toPixY   = cy => (cy - viewport.y) / scaleY - 0.5;
+        const r_canvas = Math.hypot(cursor.x - circleCenter.x, cursor.y - circleCenter.y);
+        drawEllipsePixels(pixels, displayW, displayH,
+          toPixX(circleCenter.x), toPixY(circleCenter.y),
+          r_canvas / scaleX, r_canvas / scaleY);
+      }
+
+      // Quad-in-progress overlay: live rectangle from first corner to cursor.
+      if (appMode === 'quad-draw' && quadStart) {
+        const scaleX = viewport.w / displayW;
+        const scaleY = viewport.h / displayH;
+        const toPixX = cx => (cx - viewport.x) / scaleX - 0.5;
+        const toPixY = cy => (cy - viewport.y) / scaleY - 0.5;
+        const x0 = toPixX(quadStart.x), y0 = toPixY(quadStart.y);
+        const x1 = toPixX(cursor.x),    y1 = toPixY(cursor.y);
+        drawLinePixels(pixels, displayW, displayH, x0, y0, x1, y0);
+        drawLinePixels(pixels, displayW, displayH, x1, y0, x1, y1);
+        drawLinePixels(pixels, displayW, displayH, x1, y1, x0, y1);
+        drawLinePixels(pixels, displayW, displayH, x0, y1, x0, y0);
+      }
+
+      // Path-in-progress overlay: confirmed segments + rubber-band to cursor.
+      if ((appMode === 'path-draw' || appMode === 'path-close') && pathVertices.length > 0) {
+        const scaleX  = viewport.w / displayW;
+        const scaleY  = viewport.h / displayH;
+        const toPixX  = cx => (cx - viewport.x) / scaleX - 0.5;
+        const toPixY  = cy => (cy - viewport.y) / scaleY - 0.5;
+        for (let i = 1; i < pathVertices.length; i++) {
+          drawLinePixels(pixels, displayW, displayH,
+            toPixX(pathVertices[i-1].x), toPixY(pathVertices[i-1].y),
+            toPixX(pathVertices[i].x),   toPixY(pathVertices[i].y));
+        }
+        if (appMode === 'path-draw') {
+          drawLinePixels(pixels, displayW, displayH,
+            toPixX(pathVertices[pathVertices.length - 1].x),
+            toPixY(pathVertices[pathVertices.length - 1].y),
+            toPixX(cursor.x), toPixY(cursor.y));
+        }
+      }
+
+      // Ellipse-in-progress overlay.
+      if (appMode === 'ellipse-draw' && ellipseF1) {
+        const scaleX = viewport.w / displayW;
+        const scaleY = viewport.h / displayH;
+        const toPixX = cx => (cx - viewport.x) / scaleX - 0.5;
+        const toPixY = cy => (cy - viewport.y) / scaleY - 0.5;
+        // 3×3 mini-cursor (cross) permanently marks f1
+        const f1px = Math.round(toPixX(ellipseF1.x)), f1py = Math.round(toPixY(ellipseF1.y));
+        setGridPixel(pixels, displayW, displayH, f1px - 1, f1py);
+        setGridPixel(pixels, displayW, displayH, f1px,     f1py);
+        setGridPixel(pixels, displayW, displayH, f1px + 1, f1py);
+        setGridPixel(pixels, displayW, displayH, f1px,     f1py - 1);
+        setGridPixel(pixels, displayW, displayH, f1px,     f1py + 1);
+        if (ellipsePhase === 2 && ellipseF2) {
+          // Mark f2 with same mini-cursor
+          const f2px = Math.round(toPixX(ellipseF2.x)), f2py = Math.round(toPixY(ellipseF2.y));
+          setGridPixel(pixels, displayW, displayH, f2px - 1, f2py);
+          setGridPixel(pixels, displayW, displayH, f2px,     f2py);
+          setGridPixel(pixels, displayW, displayH, f2px + 1, f2py);
+          setGridPixel(pixels, displayW, displayH, f2px,     f2py - 1);
+          setGridPixel(pixels, displayW, displayH, f2px,     f2py + 1);
+          // Draw live ellipse
+          const { cx, cy, rx, ry, angleDeg } = computeEllipseFromFoci(ellipseF1, ellipseF2, cursor);
+          if (rx > 0 && ry > 0) {
+            drawRotatedEllipsePixels(pixels, displayW, displayH,
+              toPixX(cx), toPixY(cy), rx / scaleX, ry / scaleY, angleDeg);
+          }
+        }
+      }
+
+      // Cursor overlay. Clamp the hotspot to a valid pixel column/row (cursor.x
+      // === CANVAS_W at the absolute right/bottom edge would otherwise map to
+      // display index `displayW`, one past the last valid pixel, dropping the
+      // hotspot off the edge entirely) so it's always visible, even when the
+      // viewport has nowhere left to pan.
+      const dcx = Math.max(0, Math.min(displayW - 1,
+        Math.round((cursor.x - viewport.x) / viewport.w * displayW)));
+      const dcy = Math.max(0, Math.min(displayH - 1,
+        Math.round((cursor.y - viewport.y) / viewport.h * displayH)));
+
+      if (cursorVisible) {
+        applyCursorToPixels(pixels, displayW, displayH, dcx, dcy);
+      }
+
+      mainSvg.value = svgSerializer.serializeToString(svgDoc.documentElement);
+      sendPixels(pixels, displayW, numCols, numRows, device);
+      paintVisualCanvas(shapeOnlyPixels, displayW, displayH,
+        cursorVisible ? dcx : null, cursorVisible ? dcy : null);
+    }
+
+    // ── Overview mode ────────────────────────────────────────────────────────
+    // Shows the full canvas at 100% with a rectangle outlining the region
+    // currently shown at the real zoom/pan level. Any key dismisses it.
+    function renderOverview(device) {
+      const numCols  = device.numberCellColumns;
+      const numRows  = device.numberCellRows;
+      const displayW = numCols * 2;
+      const displayH = numRows * 4;
+      const fullVp    = { x: 0, y: 0, w: CANVAS_W, h: CANVAS_H };
+
+      const pixels = new Uint8Array(displayW * displayH);
+      rasterizeShapes(pixels, displayW, displayH, fullVp);
+
+      // Outline the real viewport's region, mapped into the full-canvas view.
+      const x0 = (viewport.x / CANVAS_W) * displayW;
+      const y0 = (viewport.y / CANVAS_H) * displayH;
+      const x1 = ((viewport.x + viewport.w) / CANVAS_W) * displayW;
+      const y1 = ((viewport.y + viewport.h) / CANVAS_H) * displayH;
+
+      const shapeOnlyPixels = new Uint8Array(pixels);  // snapshot before viewport rect
+      drawRectBorderPixels(pixels, displayW, displayH, x0, y0, x1, y1, 2);
+
+      sendPixels(pixels, displayW, numCols, numRows, device);
+      paintVisualCanvasOverview(shapeOnlyPixels, displayW, displayH, x0, y0, x1, y1);
+    }
+
+    async function placeShape(name, device) {
+      const displayW = device.numberCellColumns * 2;
+      const displayH = device.numberCellRows * 4;
+      const cupx  = viewport.w / displayW;
+      const cupy  = viewport.h / displayH;
+      const m     = 5 * cupx;   // half-size: 5 display pixels in canvas units
+      const sw    = Math.max(cupx, cupy).toFixed(2);
+      const count = svgShapes().filter(el => shapeName(el).replace(/\d+$/, '') === name).length + 1;
+      const id    = `${name}${String(count).padStart(3, '0')}`;
+      const ccx   = cursor.x, ccy = cursor.y;
+
+      let el;
+      if (name === 'circle') {
+        el = svgDoc.createElementNS(SVG_NS, 'circle');
+      } else {
+        el = svgDoc.createElementNS(SVG_NS, 'polygon');
+      }
+      // data-name first so it appears first in the SVG source for readability
+      el.setAttribute('data-name', id);
+      el.setAttribute('id', id);
+      if (name === 'circle') {
+        el.setAttribute('cx', ccx); el.setAttribute('cy', ccy); el.setAttribute('r', m);
+      } else if (name === 'square') {
+        el.setAttribute('points', `${ccx-m},${ccy-m} ${ccx+m},${ccy-m} ${ccx+m},${ccy+m} ${ccx-m},${ccy+m}`);
+      } else if (name === 'diamond') {
+        el.setAttribute('points', `${ccx},${ccy-m} ${ccx+m},${ccy} ${ccx},${ccy+m} ${ccx-m},${ccy}`);
+      } else if (name === 'triangle') {
+        el.setAttribute('points', `${ccx},${ccy-m} ${ccx-m},${ccy+m} ${ccx+m},${ccy+m}`);
+      }
+      el.setAttribute('fill', 'none');
+      el.setAttribute('stroke', 'black');
+      el.setAttribute('stroke-width', sw);
+      svgDoc.documentElement.appendChild(el);
+      await renderCanvas(device);
+      return id;
+    }
+
+    function translateShape(el, dx, dy) {
+      if (el.tagName === 'circle') {
+        el.setAttribute('cx', +(+el.getAttribute('cx') + dx).toFixed(2));
+        el.setAttribute('cy', +(+el.getAttribute('cy') + dy).toFixed(2));
+      } else if (el.tagName === 'polygon' || el.tagName === 'polyline') {
+        const pts = el.getAttribute('points').trim().split(/[\s,]+/).map(Number);
+        const moved = [];
+        for (let i = 0; i < pts.length; i += 2)
+          moved.push(+(pts[i] + dx).toFixed(2), +(pts[i+1] + dy).toFixed(2));
+        el.setAttribute('points', moved.join(' '));
+      } else if (el.tagName === 'ellipse') {
+        const newCx = +(+el.getAttribute('cx') + dx).toFixed(2);
+        const newCy = +(+el.getAttribute('cy') + dy).toFixed(2);
+        el.setAttribute('cx', newCx);
+        el.setAttribute('cy', newCy);
+        const angle = getEllipseAngle(el);
+        if (Math.abs(angle) > 0.0001) el.setAttribute('transform', `rotate(${+angle.toFixed(4)},${newCx},${newCy})`);
+      } else if (el.tagName === 'g') {
+        for (const child of el.children) translateShape(child, dx, dy);
+      }
+    }
+
+    // Rotate el around an arbitrary pivot point (cx, cy) by angleDeg degrees.
+    function rotateShapeAroundPoint(el, cx, cy, angleDeg) {
+      const rad = angleDeg * Math.PI / 180;
+      const cos = Math.cos(rad), sin = Math.sin(rad);
+      if (el.tagName === 'circle') {
+        const dx = +el.getAttribute('cx') - cx, dy = +el.getAttribute('cy') - cy;
+        el.setAttribute('cx', +(cx + dx*cos - dy*sin).toFixed(2));
+        el.setAttribute('cy', +(cy + dx*sin + dy*cos).toFixed(2));
+      } else if (el.tagName === 'polygon' || el.tagName === 'polyline') {
+        const pts = el.getAttribute('points').trim().split(/[\s,]+/).map(Number);
+        const rotated = [];
+        for (let i = 0; i < pts.length; i += 2) {
+          const dx = pts[i] - cx, dy = pts[i+1] - cy;
+          rotated.push(+(cx + dx*cos - dy*sin).toFixed(2), +(cy + dx*sin + dy*cos).toFixed(2));
+        }
+        el.setAttribute('points', rotated.join(' '));
+      } else if (el.tagName === 'ellipse') {
+        const rad = angleDeg * Math.PI / 180;
+        const cos = Math.cos(rad), sin = Math.sin(rad);
+        const dx = +el.getAttribute('cx') - cx, dy = +el.getAttribute('cy') - cy;
+        const newCx = +(cx + dx*cos - dy*sin).toFixed(2);
+        const newCy = +(cy + dx*sin + dy*cos).toFixed(2);
+        el.setAttribute('cx', newCx);
+        el.setAttribute('cy', newCy);
+        const newAngle = getEllipseAngle(el) + angleDeg;
+        if (Math.abs(newAngle) > 0.0001) {
+          el.setAttribute('transform', `rotate(${+newAngle.toFixed(4)},${newCx},${newCy})`);
+        } else {
+          el.removeAttribute('transform');
+        }
+      } else if (el.tagName === 'g') {
+        for (const child of el.children) rotateShapeAroundPoint(child, cx, cy, angleDeg);
+      }
+    }
+
+    function rotateShape(el, angleDeg) {
+      if (el.tagName === 'circle') return;
+      const { cx, cy } = shapeCenter(el);
+      rotateShapeAroundPoint(el, cx, cy, angleDeg);
+    }
+
+    // Scale el uniformly around (cx, cy) by scale factor, affecting both position and size.
+    function scaleShapeAroundPoint(el, cx, cy, scale) {
+      if (el.tagName === 'circle') {
+        const ocx = +el.getAttribute('cx'), ocy = +el.getAttribute('cy');
+        el.setAttribute('cx', +(cx + (ocx - cx) * scale).toFixed(2));
+        el.setAttribute('cy', +(cy + (ocy - cy) * scale).toFixed(2));
+        el.setAttribute('r',  +(+el.getAttribute('r') * scale).toFixed(2));
+      } else if (el.tagName === 'polygon' || el.tagName === 'polyline') {
+        const pts = el.getAttribute('points').trim().split(/[\s,]+/).map(Number);
+        const newPts = [];
+        for (let i = 0; i < pts.length; i += 2) {
+          newPts.push(+(cx + (pts[i]   - cx) * scale).toFixed(2));
+          newPts.push(+(cy + (pts[i+1] - cy) * scale).toFixed(2));
+        }
+        el.setAttribute('points', newPts.join(' '));
+      } else if (el.tagName === 'ellipse') {
+        const newCx = +(cx + (+el.getAttribute('cx') - cx) * scale).toFixed(2);
+        const newCy = +(cy + (+el.getAttribute('cy') - cy) * scale).toFixed(2);
+        el.setAttribute('cx', newCx);
+        el.setAttribute('cy', newCy);
+        el.setAttribute('rx', +(+el.getAttribute('rx') * scale).toFixed(2));
+        el.setAttribute('ry', +(+el.getAttribute('ry') * scale).toFixed(2));
+        const angle = getEllipseAngle(el);
+        if (Math.abs(angle) > 0.0001) el.setAttribute('transform', `rotate(${+angle.toFixed(4)},${newCx},${newCy})`);
+        else el.removeAttribute('transform');
+      } else if (el.tagName === 'g') {
+        for (const child of el.children) scaleShapeAroundPoint(child, cx, cy, scale);
+      }
+    }
+
+    // Collect distances of all leaf vertices (and circle/ellipse edges) from point (cx, cy).
+    function collectVertexDists(el, cx, cy) {
+      if (el.tagName === 'circle') {
+        const d = Math.hypot(+el.getAttribute('cx') - cx, +el.getAttribute('cy') - cy);
+        return [d + +el.getAttribute('r')];
+      }
+      if (el.tagName === 'ellipse') {
+        const d = Math.hypot(+el.getAttribute('cx') - cx, +el.getAttribute('cy') - cy);
+        return [d + Math.max(+el.getAttribute('rx'), +el.getAttribute('ry'))];
+      }
+      if (el.tagName === 'polygon' || el.tagName === 'polyline') {
+        const pts = el.getAttribute('points').trim().split(/[\s,]+/).map(Number);
+        const dists = [];
+        for (let i = 0; i < pts.length; i += 2) dists.push(Math.hypot(pts[i] - cx, pts[i+1] - cy));
+        return dists;
+      }
+      if (el.tagName === 'g') {
+        const dists = [];
+        for (const child of el.children) dists.push(...collectVertexDists(child, cx, cy));
+        return dists;
+      }
+      return [];
+    }
+
+    // ── Pixel-grid line/ellipse drawing (Bresenham / midpoint ellipse) ─────────
+    function setGridPixel(pixels, W, H, x, y) {
+      if (x >= 0 && x < W && y >= 0 && y < H) pixels[y * W + x] = 1;
+    }
+
+    function drawLinePixels(pixels, W, H, x0, y0, x1, y1) {
+      x0 = Math.round(x0); y0 = Math.round(y0);
+      x1 = Math.round(x1); y1 = Math.round(y1);
+      const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
+      const sx = x1 > x0 ? 1 : -1, sy = y1 > y0 ? 1 : -1;
+      let err = dx - dy, x = x0, y = y0;
+      while (true) {
+        setGridPixel(pixels, W, H, x, y);
+        if (x === x1 && y === y1) break;
+        const e2 = 2 * err;
+        if (e2 > -dy) { err -= dy; x += sx; }
+        if (e2 < dx)  { err += dx; y += sy; }
+      }
+    }
+
+    function drawEllipsePixels(pixels, W, H, cx, cy, rx, ry) {
+      cx = Math.round(cx); cy = Math.round(cy);
+      rx = Math.max(1, Math.round(rx));
+      ry = Math.max(1, Math.round(ry));
+      const plot = (x, y) => {
+        setGridPixel(pixels, W, H, cx + x, cy + y);
+        setGridPixel(pixels, W, H, cx - x, cy + y);
+        setGridPixel(pixels, W, H, cx + x, cy - y);
+        setGridPixel(pixels, W, H, cx - x, cy - y);
+      };
+
+      const rx2 = rx * rx, ry2 = ry * ry;
+      let x = 0, y = ry;
+
+      // Region 1: slope magnitude < 1
+      let d1 = ry2 - rx2 * ry + 0.25 * rx2;
+      let dx = 2 * ry2 * x;
+      let dy = 2 * rx2 * y;
+      while (dx <= dy) {
+        plot(x, y);
+        x++;
+        dx += 2 * ry2;
+        if (d1 < 0) {
+          d1 += dx + ry2;
+        } else {
+          y--;
+          dy -= 2 * rx2;
+          d1 += dx - dy + ry2;
+        }
+      }
+
+      // Region 2: slope magnitude >= 1
+      let d2 = ry2 * (x + 0.5) ** 2 + rx2 * (y - 1) ** 2 - rx2 * ry2;
+      while (y >= 0) {
+        plot(x, y);
+        y--;
+        dy -= 2 * rx2;
+        if (d2 > 0) {
+          d2 += rx2 - dy;
+        } else {
+          x++;
+          dx += 2 * ry2;
+          d2 += dx - dy + rx2;
+        }
+      }
+    }
+
+    // Rotated ellipse via parametric curve; consecutive points joined with Bresenham
+    // segments to guarantee no gaps at any orientation or aspect ratio.
+    function drawRotatedEllipsePixels(pixels, W, H, cx, cy, rx, ry, angleDeg) {
+      if (rx < 0.5 || ry < 0.5) return;
+      const rad = angleDeg * Math.PI / 180;
+      const cosA = Math.cos(rad), sinA = Math.sin(rad);
+      const steps = Math.ceil(4 * Math.PI * Math.max(rx, ry)) + 8;
+      let prevX = null, prevY = null;
+      for (let i = 0; i <= steps; i++) {
+        const t = (2 * Math.PI * i) / steps;
+        const lx = rx * Math.cos(t), ly = ry * Math.sin(t);
+        const x = Math.round(cx + lx * cosA - ly * sinA);
+        const y = Math.round(cy + lx * sinA + ly * cosA);
+        if (prevX !== null) drawLinePixels(pixels, W, H, prevX, prevY, x, y);
+        prevX = x; prevY = y;
+      }
+    }
+
+    // Axis-aligned rectangle outline, `thickness` pixels thick (drawn inward
+    // from x0,y0,x1,y1), built from stacked Bresenham lines so it shares the
+    // same direction-symmetric drawing logic as everything else.
+    function drawRectBorderPixels(pixels, W, H, x0, y0, x1, y1, thickness) {
+      x0 = Math.round(x0); y0 = Math.round(y0);
+      x1 = Math.round(x1); y1 = Math.round(y1);
+      if (x1 < x0) [x0, x1] = [x1, x0];
+      if (y1 < y0) [y0, y1] = [y1, y0];
+      for (let t = 0; t < thickness; t++) {
+        drawLinePixels(pixels, W, H, x0,   y0+t, x1,   y0+t); // top
+        drawLinePixels(pixels, W, H, x0,   y1-t, x1,   y1-t); // bottom
+        drawLinePixels(pixels, W, H, x0+t, y0,   x0+t, y1);   // left
+        drawLinePixels(pixels, W, H, x1-t, y0,   x1-t, y1);   // right
+      }
+    }
+
+    // ── Hit testing ───────────────────────────────────────────────────────────
+    function pointInPolygon(x, y, pts) {
+      let inside = false;
+      const n = pts.length / 2;
+      for (let i = 0, j = n - 1; i < n; j = i++) {
+        const xi = pts[i*2], yi = pts[i*2+1], xj = pts[j*2], yj = pts[j*2+1];
+        if (((yi > y) !== (yj > y)) && (x < (xj-xi)*(y-yi)/(yj-yi)+xi)) inside = !inside;
+      }
+      return inside;
+    }
+
+    function pointInShape(el, x, y) {
+      switch (el.tagName) {
+        case 'circle': {
+          const cx = +el.getAttribute('cx'), cy = +el.getAttribute('cy'), r = +el.getAttribute('r');
+          return (x-cx)**2 + (y-cy)**2 <= r**2;
+        }
+        case 'ellipse': {
+          const cx = +el.getAttribute('cx'), cy = +el.getAttribute('cy');
+          const rx = +el.getAttribute('rx'), ry = +el.getAttribute('ry');
+          const angle = getEllipseAngle(el) * Math.PI / 180;
+          const dx = x - cx, dy = y - cy;
+          const lx = dx * Math.cos(angle) + dy * Math.sin(angle);
+          const ly = -dx * Math.sin(angle) + dy * Math.cos(angle);
+          return (lx/rx)**2 + (ly/ry)**2 <= 1;
+        }
+        case 'polygon': case 'polyline':
+          return pointInPolygon(x, y, el.getAttribute('points').trim().split(/[\s,]+/).map(Number));
+        case 'g':
+          for (const child of el.children) { if (pointInShape(child, x, y)) return true; }
+          return false;
+        default: return false;
+      }
+    }
+
+    function shapeArea(el) {
+      if (el.tagName === 'circle') {
+        const r = +el.getAttribute('r');
+        return Math.PI * r * r;
+      }
+      if (el.tagName === 'ellipse') {
+        return Math.PI * +el.getAttribute('rx') * +el.getAttribute('ry');
+      }
+      if (el.tagName === 'polygon' || el.tagName === 'polyline') {
+        const pts = el.getAttribute('points').trim().split(/[\s,]+/).map(Number);
+        let area = 0;
+        const n = pts.length / 2;
+        for (let i = 0; i < n; i++) {
+          const j = (i + 1) % n;
+          area += pts[2*i] * pts[2*j+1] - pts[2*j] * pts[2*i+1];
+        }
+        return Math.abs(area) / 2;
+      }
+      if (el.tagName === 'g') {
+        let total = 0;
+        for (const child of el.children) total += shapeArea(child);
+        return total;
+      }
+      return 0;
+    }
+
+    function cursorOverObject() {
+      const shapes = svgShapes();
+      for (let i = shapes.length - 1; i >= 0; i--)
+        if (pointInShape(shapes[i], cursor.x, cursor.y)) return shapes[i];
+      return null;
+    }
+
+    // The object commands like select/edit operate on: prefer the last
+    // jump-navigated object (so the action always matches what the message
+    // display named), falling back to whatever the cursor is currently over.
+    function currentObject() {
+      const jumpEl = jumpAnchorId ? svgDoc.getElementById(jumpAnchorId) : null;
+      return jumpEl || cursorOverObject();
+    }
+
+    // ── Shape list for new-object mode ────────────────────────────────────────
+    const SHAPE_LIST = ['circle', 'ellipse', 'diamond', 'quadrilateral', 'triangle', 'path'];
+    let activeShapeList = [];
+
+    function sendMessage(text, device) {
+      const zeros = '00'.repeat(device.numberBrailleCellColumns);
+      sdk.displayTextData(zeros, device, DisplayMode.TextMode);
+      const hex = textToMessageHex(text, device.numberBrailleCellColumns);
+      sdk.displayTextData(hex, device, DisplayMode.TextMode);
+      visualMsg.textContent = text;
+    }
+
+    function clearMessage(device) {
+      const zeros = '00'.repeat(device.numberBrailleCellColumns);
+      sdk.displayTextData(zeros, device, DisplayMode.TextMode);
+      visualMsg.textContent = '';
+    }
+
+    function logKey(_text) { /* removed */ }
+
+    // ── App mode state ────────────────────────────────────────────────────────
+    // Modes: 'normal' | 'new-object' | 'action' | 'move' | 'dialog' | 'overview' | 'path-draw' | 'path-close' | 'quad-draw' | 'circle-draw'
+    let appMode        = 'normal';
+    let newObjectIndex = 0;
+    let actionIndex    = 0;
+    let actionTarget   = null;  // object the edit menu (action/move/resize) is operating on
+    let moveSnapshot   = null;
+    let resizeRpCount  = 0;
+    let resizeLpCount  = 0;
+    let jumpAnchorId   = null;  // ID of last shape jumped to; null = not in a jump sequence
+    let pathVertices   = [];    // vertices placed so far during path-draw mode
+    let quadStart      = null;  // first corner of quadrilateral being drawn
+    let circleCenter   = null;  // center point of circle being drawn
+    let ellipseF1      = null;  // first focus of ellipse being drawn (fixed at mode entry)
+    let ellipseF2      = null;  // second focus, confirmed by dot4 in phase 1
+    let ellipsePhase   = 1;     // 1 = positioning f2, 2 = positioning edge point
+
+    // Smallest viewport size zoom-in is allowed to reach: 1/16 of the canvas in
+    // each dimension (4 zoom-in steps from 100%, since each step halves w and h).
+    const MIN_VIEWPORT_W = CANVAS_W / 16;
+    const MIN_VIEWPORT_H = CANVAS_H / 16;
+
+    const ACTION_LIST = ['delete', 'rename', 'move'];
+
+    // ── New-object mode ───────────────────────────────────────────────────────
+    function enterNewObject(device) {
+      activeShapeList = selectedShapes().length >= 2
+        ? [...SHAPE_LIST, 'group']
+        : [...SHAPE_LIST];
+      appMode        = 'new-object';
+      newObjectIndex = 0;
+      sendMessage(activeShapeList[newObjectIndex], device);
+      logKey(`n  →  new object mode  →  ${activeShapeList[newObjectIndex]}`);
+    }
+
+    async function handleNewObjectKey(byte6, label, device) {
+      const dot = b => !!(byte6 & (1 << (b - 1)));
+      if (byte6 === 0x38) {                // dots 456 → OK
+        const name = activeShapeList[newObjectIndex];
+        if (name === 'path') {
+          enterPathDraw(device);
+        } else if (name === 'quadrilateral') {
+          enterQuadDraw(device);
+        } else if (name === 'circle') {
+          enterCircleDraw(device);
+        } else if (name === 'ellipse') {
+          enterEllipseDraw(device);
+        } else if (name === 'group') {
+          createGroup(device);
+        } else {
+          const id = await placeShape(name, device);
+          jumpAnchorId = id;
+          sendMessage(id, device);
+          logKey(`confirm  →  placed ${id}`);
+          appMode = 'normal';
+        }
+      } else if (byte6 === 0x07) {         // dots 123 → cancel
+        sendMessage('cancelled', device);
+        logKey('cancel  →  new object cancelled');
+        appMode = 'normal';
+      } else if (dot(6) && !dot(3)) {      // RP → next
+        newObjectIndex = (newObjectIndex + 1) % activeShapeList.length;
+        sendMessage(activeShapeList[newObjectIndex], device);
+        logKey(`${label}  →  ${activeShapeList[newObjectIndex]}`);
+      } else if (dot(3) && !dot(6)) {      // LP → prev
+        newObjectIndex = (newObjectIndex - 1 + activeShapeList.length) % activeShapeList.length;
+        sendMessage(activeShapeList[newObjectIndex], device);
+        logKey(`${label}  →  ${activeShapeList[newObjectIndex]}`);
+      }
+    }
+
+    function createGroup(device) {
+      const sel = selectedShapes();
+      if (sel.length < 2) { appMode = 'normal'; return; }
+      const count = svgShapes().filter(el => shapeName(el).replace(/\d+$/, '') === 'group').length + 1;
+      const id = `group${String(count).padStart(3, '0')}`;
+      const g = svgDoc.createElementNS(SVG_NS, 'g');
+      g.setAttribute('data-name', id);
+      g.setAttribute('id', id);
+      g.setAttribute('fill', 'none');
+      svgDoc.documentElement.appendChild(g);
+      for (const el of sel) g.appendChild(el);
+      clearAllSelection();
+      jumpAnchorId = id;
+      appMode = 'normal';
+      renderCanvas(device);
+      sendMessage(id, device);
+      logKey(`group  →  created ${id}`);
+    }
+
+    // ── Action mode ───────────────────────────────────────────────────────────
+    function enterActionMode(el, device) {
+      actionTarget = el;
+      appMode      = 'action';
+      actionIndex  = 0;
+      sendMessage(ACTION_LIST[0], device);
+      logKey(`action menu  →  ${ACTION_LIST[0]}`);
+    }
+
+    function handleActionKey(byte6, label, device) {
+      const dot = b => !!(byte6 & (1 << (b - 1)));
+      if (byte6 === 0x38) {                // dots 456 → OK
+        executeAction(ACTION_LIST[actionIndex], device);
+      } else if (byte6 === 0x07) {         // dots 123 → cancel
+        sendMessage('cancelled', device);
+        logKey('action  →  cancelled');
+        appMode = 'normal';
+      } else if (dot(6) && !dot(3)) {      // RP → next
+        actionIndex = (actionIndex + 1) % ACTION_LIST.length;
+        sendMessage(ACTION_LIST[actionIndex], device);
+        logKey(`${label}  →  ${ACTION_LIST[actionIndex]}`);
+      } else if (dot(3) && !dot(6)) {      // LP → prev
+        actionIndex = (actionIndex - 1 + ACTION_LIST.length) % ACTION_LIST.length;
+        sendMessage(ACTION_LIST[actionIndex], device);
+        logKey(`${label}  →  ${ACTION_LIST[actionIndex]}`);
+      }
+    }
+
+    function executeAction(action, device) {
+      const el = actionTarget;
+      if (!el) { appMode = 'normal'; return; }
+      const name = shapeName(el);
+      if (action === 'delete') {
+        if (el.tagName === 'g') {
+          appMode = 'delete-group';
+          sendMessage('del grouping/contents?', device);
+          logKey(`delete  →  group prompt for ${name}`);
+          return;
+        }
+        if (el.getAttribute('data-selected') === 'true') clearAllSelection();
+        el.parentNode.removeChild(el);
+        renderCanvas(device);
+        sendMessage(`${name} deleted`, device);
+        logKey(`delete  →  removed ${name}`);
+        appMode = 'normal';
+      } else if (action === 'rename') {
+        appMode = 'dialog';
+        openRenameDialog(name,
+          (newName) => {
+            el.setAttribute('data-name', newName);
+            sendMessage(`${newName}`, device);
+            logKey(`rename  →  "${name}" → "${newName}"`);
+            appMode = 'normal';
+          },
+          () => {
+            logKey('rename  →  cancelled');
+            appMode = 'normal';
+          }
+        );
+      } else if (action === 'move') {
+        enterMoveMode(device);
+      }
+    }
+
+    // ── Delete-group prompt ───────────────────────────────────────────────────
+    function handleDeleteGroupKey(byte6, label, device) {
+      const el = actionTarget;
+      if (!el) { appMode = 'normal'; return; }
+      const letter = byte6ToLetter(byte6);
+
+      if (byte6 === 0x07) {              // dots 123 → cancel, no action
+        sendMessage('cancelled', device);
+        logKey('delete group  →  cancelled');
+        appMode = 'normal';
+        return;
+      }
+      if (letter === 'g') {              // ungroup: move children back to parent SVG root
+        const parent = el.parentNode;
+        const children = Array.from(el.children);
+        for (const child of children) parent.insertBefore(child, el);
+        parent.removeChild(el);
+        clearAllSelection();
+        renderCanvas(device);
+        sendMessage('ungrouped', device);
+        logKey(`delete group  →  ungrouped ${shapeName(el)}`);
+        appMode = 'normal';
+        return;
+      }
+      if (letter === 'c') {              // delete group and all contents
+        clearAllSelection();
+        el.parentNode.removeChild(el);
+        renderCanvas(device);
+        sendMessage(`${shapeName(el)} deleted`, device);
+        logKey(`delete group  →  deleted ${shapeName(el)}`);
+        appMode = 'normal';
+        return;
+      }
+    }
+
+    // ── Rename dialog ─────────────────────────────────────────────────────────
+    const renameOverlay = document.getElementById('rename-overlay');
+    const renameInput   = document.getElementById('rename-input');
+    const renameOkBtn   = document.getElementById('rename-ok-btn');
+    const renameCancelBtn = document.getElementById('rename-cancel-btn');
+
+    function openRenameDialog(currentName, onConfirm, onCancel) {
+      renameInput.value = currentName;
+      renameOverlay.classList.add('open');
+      renameInput.focus();
+      renameInput.select();
+      const finish = (confirmed) => {
+        renameOverlay.classList.remove('open');
+        renameOkBtn.onclick = null;
+        renameCancelBtn.onclick = null;
+        renameInput.onkeydown = null;
+        if (confirmed) {
+          const v = renameInput.value.trim();
+          if (v) onConfirm(v); else onCancel();
+        } else {
+          onCancel();
+        }
+      };
+      renameOkBtn.onclick     = () => finish(true);
+      renameCancelBtn.onclick = () => finish(false);
+      renameInput.onkeydown   = e => {
+        if (e.key === 'Enter')  { e.preventDefault(); finish(true);  }
+        if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+      };
+    }
+
+    // ── Move mode ─────────────────────────────────────────────────────────────
+    function enterMoveMode(device) {
+      const el = actionTarget;
+      if (!el) { appMode = 'normal'; return; }
+      moveSnapshot  = saveShapeGeometry(el);
+      resizeRpCount = 0;
+      resizeLpCount = 0;
+      // Fix _minSize once at entry (2 display pixels in canvas units).
+      // Computing it per key-press would shift the floor whenever zoom changes.
+      const cupx = viewport.w / (device.numberCellColumns * 2);
+      el._minSize = 2 * cupx;
+      appMode = 'move';
+      sendMessage(`move ${shapeName(el)}`, device);
+      logKey(`move mode  →  ${shapeName(el)}`);
+    }
+
+    function handleMoveKey(byte6, label, device) {
+      const el     = actionTarget;
+      const letter = byte6ToLetter(byte6);
+      if (!el) { appMode = 'normal'; return; }
+
+      const dot    = b => !!(byte6 & (1 << (b - 1)));
+      const cupx   = viewport.w / (device.numberCellColumns * 2);
+      const cupy   = viewport.h / (device.numberCellRows * 4);
+
+      if (byte6 === 0x38) {                // dots 456 → OK
+        delete el._minSize;
+        sendMessage(`${shapeName(el)} moved`, device);
+        logKey(`move  →  confirmed`);
+        appMode = 'normal';
+        return;
+      }
+      if (byte6 === 0x07) {                // dots 123 → cancel
+        delete el._minSize;
+        restoreShapeGeometry(el, moveSnapshot);
+        renderCanvas(device);
+        sendMessage('cancelled', device);
+        logKey(`move  →  cancelled`);
+        appMode = 'normal';
+        return;
+      }
+      if (byte6 === 0x30) {                // dots 56 → grow
+        resizeLpCount = 0;
+        resizeRpCount++;
+        applyResize(el, resizeStep(resizeRpCount) * cupx);
+        renderCanvas(device);
+        logKey(`move  →  grow +${resizeStep(resizeRpCount)}dp`);
+        return;
+      }
+      if (byte6 === 0x06) {                // dots 23 → shrink
+        resizeRpCount = 0;
+        resizeLpCount++;
+        applyResize(el, -resizeStep(resizeLpCount) * cupx);
+        renderCanvas(device);
+        logKey(`move  →  shrink -${resizeStep(resizeLpCount)}dp`);
+        return;
+      }
+
+      if      (dot(3) && !dot(6)) translateShape(el, -cupx,  0);
+      else if (dot(6) && !dot(3)) translateShape(el,  cupx,  0);
+      else if (dot(2))            translateShape(el,  0,    -cupy);
+      else if (dot(5))            translateShape(el,  0,     cupy);
+      else if (dot(1))            rotateShape(el, -15);
+      else if (dot(4))            rotateShape(el,  15);
+      else return;
+
+      renderCanvas(device);
+    }
+
+    // ── Resize mode ───────────────────────────────────────────────────────────
+    function saveShapeGeometry(el) {
+      const saved = {};
+      for (const attr of el.attributes) saved[attr.name] = attr.value;
+      if (el.tagName === 'g')
+        saved._children = Array.from(el.children).map(child => saveShapeGeometry(child));
+      return saved;
+    }
+
+    function restoreShapeGeometry(el, saved) {
+      for (const attr of [...el.attributes]) {
+        if (!(attr.name in saved)) el.removeAttribute(attr.name);
+      }
+      for (const [k, v] of Object.entries(saved)) {
+        if (k !== '_children') el.setAttribute(k, v);
+      }
+      if (el.tagName === 'g' && saved._children) {
+        const children = Array.from(el.children);
+        children.forEach((child, i) => { if (saved._children[i]) restoreShapeGeometry(child, saved._children[i]); });
+      }
+    }
+
+    function applyResize(el, delta) {
+      // delta > 0 = grow, delta < 0 = shrink; in canvas units.
+      // el._minSize must be set by the caller (10 display pixels in canvas units).
+      switch (el.tagName) {
+        case 'circle': {
+          const newR = Math.max(el._minSize, +el.getAttribute('r') + delta);
+          el.setAttribute('r', +newR.toFixed(2));
+          break;
+        }
+        case 'ellipse': {
+          const rx = +el.getAttribute('rx'), ry = +el.getAttribute('ry');
+          const maxR = Math.max(rx, ry);
+          if (maxR < 0.001) break;
+          const rawScale = (maxR + delta) / maxR;
+          const scale = (maxR * rawScale < el._minSize) ? el._minSize / maxR : rawScale;
+          el.setAttribute('rx', +(rx * scale).toFixed(2));
+          el.setAttribute('ry', +(ry * scale).toFixed(2));
+          break;
+        }
+        case 'rect': {
+          const cx  = +el.getAttribute('x') + +el.getAttribute('width')  / 2;
+          const cy  = +el.getAttribute('y') + +el.getAttribute('height') / 2;
+          const newW = Math.max(el._minSize * 2, +el.getAttribute('width')  + delta * 2);
+          const newH = Math.max(el._minSize * 2, +el.getAttribute('height') + delta * 2);
+          el.setAttribute('x',      +(cx - newW / 2).toFixed(2));
+          el.setAttribute('y',      +(cy - newH / 2).toFixed(2));
+          el.setAttribute('width',  +newW.toFixed(2));
+          el.setAttribute('height', +newH.toFixed(2));
+          break;
+        }
+        case 'polygon': case 'polyline': {
+          const { cx, cy } = shapeCenter(el);
+          const pts = el.getAttribute('points').trim().split(/[\s,]+/).map(Number);
+          const n = pts.length / 2;
+          // Compute per-vertex distances from centroid.
+          const dists = [];
+          for (let i = 0; i < pts.length; i += 2)
+            dists.push(Math.hypot(pts[i] - cx, pts[i + 1] - cy));
+          const avgDist = dists.reduce((s, d) => s + d, 0) / n;
+          const minDist = Math.min(...dists);
+          if (avgDist < 0.001) break;  // degenerate shape, nothing to scale
+          // One uniform scale factor keeps all vertices proportional → shape preserved.
+          const rawScale = (avgDist + delta) / avgDist;
+          const scale    = (minDist * rawScale < el._minSize)
+            ? el._minSize / minDist
+            : rawScale;
+          const newPts = [];
+          for (let i = 0; i < pts.length; i += 2) {
+            const dx = pts[i] - cx, dy = pts[i + 1] - cy;
+            newPts.push(+(cx + dx * scale).toFixed(2), +(cy + dy * scale).toFixed(2));
+          }
+          el.setAttribute('points', newPts.join(' '));
+          break;
+        }
+        case 'g': {
+          const { cx, cy } = shapeCenter(el);
+          const allDists = collectVertexDists(el, cx, cy);
+          if (allDists.length === 0) break;
+          const avgDist = allDists.reduce((s, d) => s + d, 0) / allDists.length;
+          const minDist = Math.min(...allDists);
+          if (avgDist < 0.001) break;
+          const rawScale = (avgDist + delta) / avgDist;
+          const scale    = (minDist * rawScale < el._minSize)
+            ? el._minSize / minDist
+            : rawScale;
+          scaleShapeAroundPoint(el, cx, cy, scale);
+          break;
+        }
+      }
+    }
+
+    function resizeStep(count) {
+      if (count <= 3) return 1;
+      if (count <= 6) return 3;
+      return 10;
+    }
+
+    // ── Circle drawing mode ───────────────────────────────────────────────────
+    function circleDimMessage(device) {
+      const displayW  = device.numberCellColumns * 2;
+      const cupx      = viewport.w / displayW;
+      const r         = Math.round(Math.hypot(cursor.x - circleCenter.x, cursor.y - circleCenter.y) / cupx);
+      const count     = svgShapes().filter(el => shapeName(el).replace(/\d+$/, '') === 'circle').length + 1;
+      const previewId = `circle${String(count).padStart(3, '0')}`;
+      sendMessage(`${previewId} radius ${r}`, device);
+    }
+
+    function enterCircleDraw(device) {
+      circleCenter = { x: cursor.x, y: cursor.y };
+      appMode      = 'circle-draw';
+      lastMoveDir  = null; moveDirCount = 0;
+      logKey('circle draw  →  started');
+      renderCanvas(device);
+      circleDimMessage(device);
+    }
+
+    function handleCircleDrawKey(byte6, label, device) {
+      if (byte6 === 0x38) {              // dots 456 → OK
+        const displayW = device.numberCellColumns * 2;
+        const displayH = device.numberCellRows * 4;
+        const cupx     = viewport.w / displayW;
+        const cupy     = viewport.h / displayH;
+        const r        = Math.hypot(cursor.x - circleCenter.x, cursor.y - circleCenter.y);
+        const count    = svgShapes().filter(el => shapeName(el).replace(/\d+$/, '') === 'circle').length + 1;
+        const id       = `circle${String(count).padStart(3, '0')}`;
+        const sw       = Math.max(cupx, cupy).toFixed(2);
+
+        const el = svgDoc.createElementNS(SVG_NS, 'circle');
+        el.setAttribute('data-name',    id);
+        el.setAttribute('id',           id);
+        el.setAttribute('cx',           +circleCenter.x.toFixed(2));
+        el.setAttribute('cy',           +circleCenter.y.toFixed(2));
+        el.setAttribute('r',            +r.toFixed(2));
+        el.setAttribute('fill',         'none');
+        el.setAttribute('stroke',       'black');
+        el.setAttribute('stroke-width', sw);
+        svgDoc.documentElement.appendChild(el);
+
+        circleCenter = null;
+        jumpAnchorId = id;
+        appMode      = 'normal';
+        renderCanvas(device);
+        sendMessage(id, device);
+        logKey(`circle  →  placed ${id}`);
+        return;
+      }
+
+      if (byte6 === 0x07) {              // dots 123 → cancel
+        circleCenter = null;
+        appMode      = 'normal';
+        sendMessage('cancelled', device);
+        logKey('circle  →  cancelled');
+        renderCanvas(device);
+        return;
+      }
+
+      // Normal cursor movement: LP=left, RP=right, dot2=up, dot5=down
+      let dir = null;
+      if      (byte6 === 0x04) dir = 'left';
+      else if (byte6 === 0x20) dir = 'right';
+      else if (byte6 === 0x02) dir = 'up';
+      else if (byte6 === 0x10) dir = 'down';
+
+      if (dir) {
+        if (dir !== lastMoveDir) { lastMoveDir = dir; moveDirCount = 0; }
+        moveDirCount++;
+        const inc      = moveIncrement(moveDirCount);
+        const displayW = device.numberCellColumns * 2;
+        const displayH = device.numberCellRows * 4;
+        const cupx     = viewport.w / displayW;
+        const cupy     = viewport.h / displayH;
+        if      (dir === 'left')  cursor.x -= inc * cupx;
+        else if (dir === 'right') cursor.x += inc * cupx;
+        else if (dir === 'up')    cursor.y -= inc * cupy;
+        else if (dir === 'down')  cursor.y += inc * cupy;
+        cursor.x = Math.max(0, Math.min(CANVAS_W, cursor.x));
+        cursor.y = Math.max(0, Math.min(CANVAS_H, cursor.y));
+        panViewportToCursor(device);
+        renderCanvas(device);
+        circleDimMessage(device);
+      } else {
+        lastMoveDir = null; moveDirCount = 0;
+      }
+    }
+
+    // ── Ellipse drawing mode ──────────────────────────────────────────────────
+    function computeEllipseFromFoci(f1, f2, edgePoint) {
+      const cx = (f1.x + f2.x) / 2;
+      const cy = (f1.y + f2.y) / 2;
+      const c  = Math.hypot(f2.x - f1.x, f2.y - f1.y) / 2;
+      const twoA = Math.hypot(edgePoint.x - f1.x, edgePoint.y - f1.y) +
+                   Math.hypot(edgePoint.x - f2.x, edgePoint.y - f2.y);
+      const a    = twoA / 2;
+      const bSq  = a * a - c * c;
+      const b    = bSq > 0 ? Math.sqrt(bSq) : 0;
+      const angleDeg = Math.atan2(f2.y - f1.y, f2.x - f1.x) * 180 / Math.PI;
+      return { cx, cy, rx: a, ry: b, angleDeg };
+    }
+
+    function ellipseDimMessage(device) {
+      const displayW = device.numberCellColumns * 2;
+      const displayH = device.numberCellRows * 4;
+      const cupx     = viewport.w / displayW;
+      const cupy     = viewport.h / displayH;
+      const maxCells = device.numberBrailleCellColumns;
+      const count    = svgShapes().filter(el => shapeName(el).replace(/\d+$/, '') === 'ellipse').length + 1;
+      const id       = `ellipse${String(count).padStart(3, '0')}`;
+      const toOff    = p => [Math.round((p.x - ellipseF1.x) / cupx), Math.round((p.y - ellipseF1.y) / cupy)];
+      const [curX, curY] = toOff(cursor);
+      let tokens;
+      if (ellipsePhase === 1) {
+        tokens = [id, 'f1 0,0', `f2 ${curX},${curY}`];
+      } else {
+        const [f2x, f2y] = toOff(ellipseF2);
+        tokens = [id, 'f1 0,0', `f2 ${f2x},${f2y}`, `edge ${curX},${curY}`];
+      }
+      const display = [];
+      let used = 0;
+      for (let i = tokens.length - 1; i >= 0; i--) {
+        const cost = (display.length > 0 ? 1 : 0) + tokens[i].length;
+        if (used + cost <= maxCells) { display.unshift(tokens[i]); used += cost; }
+        else break;
+      }
+      sendMessage(display.join(' '), device);
+    }
+
+    function enterEllipseDraw(device) {
+      ellipseF1    = { x: cursor.x, y: cursor.y };
+      ellipseF2    = null;
+      ellipsePhase = 1;
+      appMode      = 'ellipse-draw';
+      lastMoveDir  = null; moveDirCount = 0;
+      logKey('ellipse draw  →  started');
+      renderCanvas(device);
+      ellipseDimMessage(device);
+    }
+
+    function handleEllipseDrawKey(byte6, label, device) {
+      if (byte6 === 0x07) {              // dots 123 → cancel
+        ellipseF1 = null; ellipseF2 = null; ellipsePhase = 1;
+        appMode   = 'normal';
+        sendMessage('cancelled', device);
+        logKey('ellipse  →  cancelled');
+        renderCanvas(device);
+        return;
+      }
+
+      if (ellipsePhase === 1 && byte6 === 0x08) {  // dot4 → confirm f2
+        ellipseF2    = { x: cursor.x, y: cursor.y };
+        ellipsePhase = 2;
+        lastMoveDir  = null; moveDirCount = 0;
+        logKey('ellipse  →  f2 confirmed, setting edge');
+        renderCanvas(device);
+        ellipseDimMessage(device);
+        return;
+      }
+
+      if (ellipsePhase === 2 && (byte6 === 0x08 || byte6 === 0x38)) {  // dot4 or dots-456 → confirm edge
+        const { cx, cy, rx, ry, angleDeg } = computeEllipseFromFoci(ellipseF1, ellipseF2, cursor);
+        if (ry < 0.01) { sendMessage('degenerate', device); return; }
+        const count    = svgShapes().filter(el => shapeName(el).replace(/\d+$/, '') === 'ellipse').length + 1;
+        const id       = `ellipse${String(count).padStart(3, '0')}`;
+        const displayW = device.numberCellColumns * 2;
+        const displayH = device.numberCellRows * 4;
+        const sw       = Math.max(viewport.w / displayW, viewport.h / displayH).toFixed(2);
+
+        const el = svgDoc.createElementNS(SVG_NS, 'ellipse');
+        el.setAttribute('data-name',    id);
+        el.setAttribute('id',           id);
+        el.setAttribute('cx',           +cx.toFixed(2));
+        el.setAttribute('cy',           +cy.toFixed(2));
+        el.setAttribute('rx',           +rx.toFixed(2));
+        el.setAttribute('ry',           +ry.toFixed(2));
+        el.setAttribute('fill',         'none');
+        el.setAttribute('stroke',       'black');
+        el.setAttribute('stroke-width', sw);
+        if (Math.abs(angleDeg) > 0.0001)
+          el.setAttribute('transform', `rotate(${+angleDeg.toFixed(4)},${+cx.toFixed(2)},${+cy.toFixed(2)})`);
+        svgDoc.documentElement.appendChild(el);
+
+        ellipseF1 = null; ellipseF2 = null; ellipsePhase = 1;
+        jumpAnchorId = id;
+        appMode   = 'normal';
+        renderCanvas(device);
+        sendMessage(id, device);
+        logKey(`ellipse  →  placed ${id}`);
+        return;
+      }
+
+      // Cursor movement: LP(dot3)=left, RP(dot6)=right, dot2=up, dot5=down
+      let dir = null;
+      if      (byte6 === 0x04) dir = 'left';
+      else if (byte6 === 0x20) dir = 'right';
+      else if (byte6 === 0x02) dir = 'up';
+      else if (byte6 === 0x10) dir = 'down';
+
+      if (dir) {
+        if (dir !== lastMoveDir) { lastMoveDir = dir; moveDirCount = 0; }
+        moveDirCount++;
+        const inc      = moveIncrement(moveDirCount);
+        const displayW = device.numberCellColumns * 2;
+        const displayH = device.numberCellRows * 4;
+        const cupx     = viewport.w / displayW;
+        const cupy     = viewport.h / displayH;
+        if      (dir === 'left')  cursor.x -= inc * cupx;
+        else if (dir === 'right') cursor.x += inc * cupx;
+        else if (dir === 'up')    cursor.y -= inc * cupy;
+        else if (dir === 'down')  cursor.y += inc * cupy;
+        cursor.x = Math.max(0, Math.min(CANVAS_W, cursor.x));
+        cursor.y = Math.max(0, Math.min(CANVAS_H, cursor.y));
+        panViewportToCursor(device);
+        renderCanvas(device);
+        ellipseDimMessage(device);
+      } else {
+        lastMoveDir = null; moveDirCount = 0;
+      }
+    }
+
+    // ── Quadrilateral drawing mode ────────────────────────────────────────────
+    function enterQuadDraw(device) {
+      quadStart = { x: cursor.x, y: cursor.y };
+      appMode = 'quad-draw';
+      lastMoveDir = null; moveDirCount = 0;
+      logKey('quad draw  →  started');
+      renderCanvas(device);
+      quadDimMessage(device);
+    }
+
+    function quadDimMessage(device) {
+      const displayW = device.numberCellColumns * 2;
+      const displayH = device.numberCellRows * 4;
+      const w = Math.round(Math.abs(cursor.x - quadStart.x) / (viewport.w / displayW)) + 1;
+      const h = Math.round(Math.abs(cursor.y - quadStart.y) / (viewport.h / displayH)) + 1;
+      const count = svgShapes().filter(el => shapeName(el).replace(/\d+$/, '') === 'quad').length + 1;
+      const previewId = `quad${String(count).padStart(3, '0')}`;
+      sendMessage(`${previewId} ${w}x${h}`, device);
+    }
+
+    function handleQuadDrawKey(byte6, label, device) {
+      if (byte6 === 0x38) {              // dots 456 → OK
+        const x0 = quadStart.x, y0 = quadStart.y;
+        const x1 = cursor.x,    y1 = cursor.y;
+        const count = svgShapes().filter(el => shapeName(el).replace(/\d+$/, '') === 'quad').length + 1;
+        const id    = `quad${String(count).padStart(3, '0')}`;
+        const pts   = `${+x0.toFixed(2)},${+y0.toFixed(2)} ${+x1.toFixed(2)},${+y0.toFixed(2)} ${+x1.toFixed(2)},${+y1.toFixed(2)} ${+x0.toFixed(2)},${+y1.toFixed(2)}`;
+        const displayW = device.numberCellColumns * 2;
+        const displayH = device.numberCellRows * 4;
+        const sw    = Math.max(viewport.w / displayW, viewport.h / displayH).toFixed(2);
+
+        const el = svgDoc.createElementNS(SVG_NS, 'polygon');
+        el.setAttribute('data-name', id);
+        el.setAttribute('id',        id);
+        el.setAttribute('points',    pts);
+        el.setAttribute('fill',         'none');
+        el.setAttribute('stroke',       'black');
+        el.setAttribute('stroke-width', sw);
+        svgDoc.documentElement.appendChild(el);
+
+        quadStart    = null;
+        jumpAnchorId = id;
+        appMode      = 'normal';
+        renderCanvas(device);
+        sendMessage(id, device);
+        logKey(`quad  →  placed ${id}`);
+        return;
+      }
+
+      if (byte6 === 0x07) {              // dots 123 → cancel
+        quadStart = null;
+        appMode   = 'normal';
+        sendMessage('cancelled', device);
+        logKey('quad  →  cancelled');
+        renderCanvas(device);
+        return;
+      }
+
+      // Normal cursor movement: LP=left, RP=right, dot2=up, dot5=down
+      let dir = null;
+      if      (byte6 === 0x04) dir = 'left';
+      else if (byte6 === 0x20) dir = 'right';
+      else if (byte6 === 0x02) dir = 'up';
+      else if (byte6 === 0x10) dir = 'down';
+
+      if (dir) {
+        if (dir !== lastMoveDir) { lastMoveDir = dir; moveDirCount = 0; }
+        moveDirCount++;
+        const inc      = moveIncrement(moveDirCount);
+        const displayW = device.numberCellColumns * 2;
+        const displayH = device.numberCellRows * 4;
+        const cupx     = viewport.w / displayW;
+        const cupy     = viewport.h / displayH;
+        if      (dir === 'left')  cursor.x -= inc * cupx;
+        else if (dir === 'right') cursor.x += inc * cupx;
+        else if (dir === 'up')    cursor.y -= inc * cupy;
+        else if (dir === 'down')  cursor.y += inc * cupy;
+        cursor.x = Math.max(0, Math.min(CANVAS_W, cursor.x));
+        cursor.y = Math.max(0, Math.min(CANVAS_H, cursor.y));
+        panViewportToCursor(device);
+        renderCanvas(device);
+        quadDimMessage(device);
+      } else {
+        lastMoveDir = null; moveDirCount = 0;
+      }
+    }
+
+    // ── Path drawing mode ─────────────────────────────────────────────────────
+    // Sends a scrolling coordinate list to the message display.
+    // Format: "path001 0,0 3,-2 7,5 [live]" — confirmed vertices as offsets from
+    // vertex 0, followed by the live cursor offset, scrolled right so the newest
+    // point is always visible.
+    function sendPathMessage(device) {
+      const displayW = device.numberCellColumns * 2;
+      const displayH = device.numberCellRows * 4;
+      const cupx     = viewport.w / displayW;
+      const cupy     = viewport.h / displayH;
+      const origin   = pathVertices[0];
+      const count    = svgShapes().filter(el => shapeName(el).replace(/\d+$/, '') === 'path').length + 1;
+      const maxCells = device.numberBrailleCellColumns;
+
+      // All confirmed vertices + live cursor as display-pixel offsets from vertex 0
+      const coords = [
+        ...pathVertices.map(v => [
+          Math.round((v.x - origin.x) / cupx),
+          Math.round((v.y - origin.y) / cupy)
+        ]),
+        [
+          Math.round((cursor.x - origin.x) / cupx),
+          Math.round((cursor.y - origin.y) / cupy)
+        ]
+      ];
+
+      // Name is just the first token — scrolls off left like coordinate pairs do
+      const tokens = [
+        `path${String(count).padStart(3, '0')}`,
+        ...coords.map(([x, y]) => `${x},${y}`)
+      ];
+
+      // Fit as many rightmost tokens as possible into the display width
+      const display = [];
+      let used = 0;
+      for (let i = tokens.length - 1; i >= 0; i--) {
+        const cost = (display.length > 0 ? 1 : 0) + tokens[i].length;
+        if (used + cost <= maxCells) { display.unshift(tokens[i]); used += cost; }
+        else break;
+      }
+      sendMessage(display.join(' '), device);
+    }
+
+    function enterPathDraw(device) {
+      pathVertices = [{ x: cursor.x, y: cursor.y }];
+      appMode = 'path-draw';
+      lastMoveDir = null; moveDirCount = 0;
+      logKey('path draw  →  started');
+      renderCanvas(device);
+      sendPathMessage(device);
+    }
+
+    function handlePathDrawKey(byte6, label, device) {
+      const letter = byte6ToLetter(byte6);
+
+      if (byte6 === 0x38) {              // dots 456 → OK (go to close prompt)
+        if (pathVertices.length < 2) {
+          sendMessage('need 2+ pts', device);
+          return;
+        }
+        appMode = 'path-close';
+        sendMessage('close fig? y/n', device);
+        logKey('path  →  close prompt');
+        return;
+      }
+
+      if (byte6 === 0x07) {              // dots 123 → cancel
+        pathVertices = [];
+        appMode = 'normal';
+        sendMessage('cancelled', device);
+        logKey('path  →  cancelled');
+        renderCanvas(device);
+        return;
+      }
+
+      if (byte6 === 0x08) {  // dot4 → place vertex
+        lastMoveDir = null; moveDirCount = 0;
+        pathVertices.push({ x: cursor.x, y: cursor.y });
+        logKey(`path  →  vertex ${pathVertices.length} placed`);
+        renderCanvas(device);
+        sendPathMessage(device);
+        return;
+      }
+
+      // Cursor movement: dot3=left, dot2=up, dot5=down, dot6=right
+      let dir = null;
+      if      (byte6 === 0x04) dir = 'left';
+      else if (byte6 === 0x02) dir = 'up';
+      else if (byte6 === 0x10) dir = 'down';
+      else if (byte6 === 0x20) dir = 'right';
+
+      if (dir) {
+        if (dir !== lastMoveDir) { lastMoveDir = dir; moveDirCount = 0; }
+        moveDirCount++;
+        const inc      = moveIncrement(moveDirCount);
+        const displayW = device.numberCellColumns * 2;
+        const displayH = device.numberCellRows * 4;
+        const cupx     = viewport.w / displayW;
+        const cupy     = viewport.h / displayH;
+        if      (dir === 'left')  cursor.x -= inc * cupx;
+        else if (dir === 'right') cursor.x += inc * cupx;
+        else if (dir === 'up')    cursor.y -= inc * cupy;
+        else if (dir === 'down')  cursor.y += inc * cupy;
+        cursor.x = Math.max(0, Math.min(CANVAS_W, cursor.x));
+        cursor.y = Math.max(0, Math.min(CANVAS_H, cursor.y));
+        panViewportToCursor(device);
+        renderCanvas(device);
+        sendPathMessage(device);
+      } else {
+        lastMoveDir = null; moveDirCount = 0;
+      }
+    }
+
+    function handlePathCloseKey(byte6, label, device) {
+      const letter = byte6ToLetter(byte6);
+
+      if (byte6 === 0x07) {              // dots 123 → cancel (back to drawing)
+        appMode = 'path-draw';
+        logKey('path  →  back to drawing');
+        sendPathMessage(device);
+        return;
+      }
+
+      if (letter === 'y' || letter === 'n') {
+        const closed   = (letter === 'y');
+        const tag      = closed ? 'polygon' : 'polyline';
+        const count    = svgShapes().filter(el => shapeName(el).replace(/\d+$/, '') === 'path').length + 1;
+        const id       = `path${String(count).padStart(3, '0')}`;
+        const pts      = pathVertices.map(v => `${+v.x.toFixed(2)},${+v.y.toFixed(2)}`).join(' ');
+        const displayW = device.numberCellColumns * 2;
+        const displayH = device.numberCellRows * 4;
+        const cupx     = viewport.w / displayW;
+        const cupy     = viewport.h / displayH;
+        const sw       = Math.max(cupx, cupy).toFixed(2);
+
+        const el = svgDoc.createElementNS(SVG_NS, tag);
+        el.setAttribute('data-name', id);
+        el.setAttribute('id', id);
+        el.setAttribute('points', pts);
+        el.setAttribute('fill', 'none');
+        el.setAttribute('stroke', 'black');
+        el.setAttribute('stroke-width', sw);
+        svgDoc.documentElement.appendChild(el);
+
+        pathVertices = [];
+        jumpAnchorId = id;
+        appMode      = 'normal';
+        renderCanvas(device);
+        sendMessage(id, device);
+        logKey(`path  →  placed ${id} (${closed ? 'closed' : 'open'})`);
+      }
+    }
+
+    // ── Zoom (no mode — available any time in normal mode via dot chords) ─────
+    function zoomPercent() {
+      return Math.round((viewport.w / CANVAS_W) * 100);
+    }
+
+    // Resize the viewport to (newW, newH), keeping the cursor's fractional
+    // position within the viewport the same so its position on the display
+    // stays fixed (clamped to canvas bounds when there's no room to do so).
+    function setViewportSize(newW, newH) {
+      const fracX = (cursor.x - viewport.x) / viewport.w;
+      const fracY = (cursor.y - viewport.y) / viewport.h;
+      viewport.w = newW;
+      viewport.h = newH;
+      viewport.x = Math.max(0, Math.min(CANVAS_W - newW, cursor.x - fracX * newW));
+      viewport.y = Math.max(0, Math.min(CANVAS_H - newH, cursor.y - fracY * newH));
+    }
+
+    function zoomIn(device) {       // dots 5+6
+      setViewportSize(
+        Math.max(MIN_VIEWPORT_W, viewport.w / 2),
+        Math.max(MIN_VIEWPORT_H, viewport.h / 2));
+      renderCanvas(device);
+      sendMessage(`${zoomPercent()}% visible`, device);
+      logKey(`zoom in  →  ${zoomPercent()}% visible`);
+    }
+
+    function zoomOut(device) {      // dots 2+3
+      setViewportSize(
+        Math.min(CANVAS_W, viewport.w * 2),
+        Math.min(CANVAS_H, viewport.h * 2));
+      renderCanvas(device);
+      sendMessage(`${zoomPercent()}% visible`, device);
+      logKey(`zoom out  →  ${zoomPercent()}% visible`);
+    }
+
+    // ── Cursor movement ───────────────────────────────────────────────────────
+    function moveIncrement(count) {
+      if (count <= 3) return 1;
+      if (count <= 6) return 5;
+      return 10;
+    }
+
+    // Pan (snap) the viewport just enough to keep the cursor — and its full
+    // crosshair, which extends 2 display pixels from the center, see
+    // applyCursorToPixels — visible. Called after anything moves the cursor
+    // (manual movement, object jump), so the cursor can never end up outside
+    // the viewport.
+    function panViewportToCursor(device) {
+      const displayW = device.numberCellColumns * 2;
+      const displayH = device.numberCellRows * 4;
+      const marginX  = 2 * (viewport.w / displayW);
+      const marginY  = 2 * (viewport.h / displayH);
+      if (cursor.x - marginX < viewport.x)                  viewport.x = cursor.x - marginX;
+      else if (cursor.x + marginX > viewport.x + viewport.w) viewport.x = cursor.x + marginX - viewport.w;
+      if (cursor.y - marginY < viewport.y)                  viewport.y = cursor.y - marginY;
+      else if (cursor.y + marginY > viewport.y + viewport.h) viewport.y = cursor.y + marginY - viewport.h;
+      viewport.x = Math.max(0, Math.min(CANVAS_W - viewport.w, viewport.x));
+      viewport.y = Math.max(0, Math.min(CANVAS_H - viewport.h, viewport.y));
+    }
+
+    function moveCursor(dir, device) {
+      jumpAnchorId = null;  // manual move breaks the jump sequence
+      if (dir !== lastMoveDir) { lastMoveDir = dir; moveDirCount = 0; }
+      moveDirCount++;
+      const inc      = moveIncrement(moveDirCount);
+      const displayW = device.numberCellColumns * 2;
+      const displayH = device.numberCellRows * 4;
+      const cupx     = viewport.w / displayW;
+      const cupy     = viewport.h / displayH;
+      if      (dir === 'left')  cursor.x -= inc * cupx;
+      else if (dir === 'right') cursor.x += inc * cupx;
+      else if (dir === 'up')    cursor.y -= inc * cupy;
+      else if (dir === 'down')  cursor.y += inc * cupy;
+      cursor.x = Math.max(0, Math.min(CANVAS_W, cursor.x));
+      cursor.y = Math.max(0, Math.min(CANVAS_H, cursor.y));
+
+      panViewportToCursor(device);
+
+      const over = cursorOverObject();
+      if (over) sendMessage(shapeName(over), device);
+      else      clearMessage(device);
+      renderCanvas(device);
+    }
+
+    function jumpCursorToObject(dir, device) {
+      const sorted = shapesSorted();
+      if (sorted.length === 0) return;
+
+      // Single-object shortcut: always jump to the only shape.
+      if (sorted.length === 1) {
+        const target = sorted[0];
+        jumpAnchorId = target.getAttribute('id');
+        const c = shapeCenter(target);
+        cursor.x = c.cx; cursor.y = c.cy;
+        panViewportToCursor(device);
+        sendMessage(shapeName(target), device);
+        renderCanvas(device);
+        logKey(`jump  →  ${shapeName(target)}`);
+        return;
+      }
+
+      // Determine current position in sorted list:
+      // 1. jumpAnchorId: used when navigating sequentially — guarantees every object
+      //    is reachable even when shapes overlap (z-order is irrelevant here).
+      // 2. Cursor position fallback (anchor is null after a manual cursor move):
+      //    search sorted nav order (NOT z-order) for the first shape containing
+      //    the cursor, so overlapping objects are all reachable forward and backward.
+      // 3. Nearest shape by center distance when cursor is in whitespace.
+      let currentIdx = -1;
+      if (jumpAnchorId) {
+        currentIdx = sorted.findIndex(el => el.getAttribute('id') === jumpAnchorId);
+      }
+      if (currentIdx < 0) {
+        currentIdx = sorted.findIndex(el => pointInShape(el, cursor.x, cursor.y));
+      }
+
+      let targetIdx;
+      if (currentIdx >= 0) {
+        targetIdx = (currentIdx + dir + sorted.length) % sorted.length;
+      } else {
+        // Cursor in whitespace with no anchor: jump to nearest shape.
+        let nearestDist = Infinity;
+        targetIdx = 0;
+        for (let i = 0; i < sorted.length; i++) {
+          const { cx, cy } = shapeCenter(sorted[i]);
+          const dist = Math.hypot(cx - cursor.x, cy - cursor.y);
+          if (dist < nearestDist) { nearestDist = dist; targetIdx = i; }
+        }
+      }
+
+      const target = sorted[targetIdx];
+      jumpAnchorId = target.getAttribute('id');
+      const c = shapeCenter(target);
+      cursor.x = c.cx;
+      cursor.y = c.cy;
+      panViewportToCursor(device);
+      sendMessage(shapeName(target), device);
+      renderCanvas(device);
+      logKey(`jump  →  ${shapeName(target)}`);
+    }
+
+    // ── Callbacks ───────────────────────────────────────────────────────────
+    sdk.setCallBack(
+      (device, dataCode) => {
+        if (dataCode === DataCodes.Connected) {
+          setConnectedState(device);
+          renderCanvas(device);
+        } else if (dataCode === DataCodes.Disconnected) {
+          setDisconnectedState();
+        }
+      },
+      (device, keyCode, msg) => {
+        const label  = msg || keyCode;
+        const byte6  = labelToByte6(label);
+        const letter = byte6ToLetter(byte6);
+
+        if (appMode === 'dialog')       { return; }
+        if (appMode === 'overview')     { appMode = 'normal'; renderCanvas(device); logKey('overview  →  dismissed'); return; }
+        if (appMode === 'new-object')   { handleNewObjectKey(byte6, label, device);   return; }
+        if (appMode === 'action')       { handleActionKey(byte6, label, device);      return; }
+        if (appMode === 'move')         { handleMoveKey(byte6, label, device);        return; }
+        if (appMode === 'delete-group') { handleDeleteGroupKey(byte6, label, device); return; }
+        if (appMode === 'path-draw')    { handlePathDrawKey(byte6, label, device);    return; }
+        if (appMode === 'path-close')   { handlePathCloseKey(byte6, label, device);   return; }
+        if (appMode === 'quad-draw')     { handleQuadDrawKey(byte6, label, device);     return; }
+        if (appMode === 'circle-draw')  { handleCircleDrawKey(byte6, label, device);   return; }
+        if (appMode === 'ellipse-draw') { handleEllipseDrawKey(byte6, label, device);  return; }
+
+        // Normal mode — cursor movement (resets acceleration on direction change)
+        if (byte6 === 0x04) { moveCursor('left',  device); return; }  // LP alone
+        if (byte6 === 0x20) { moveCursor('right', device); return; }  // RP alone
+        if (byte6 === 0x02) { moveCursor('up',    device); return; }  // dot2 alone
+        if (byte6 === 0x10) { moveCursor('down',  device); return; }  // dot5 alone
+
+        // Zoom (available any time, no mode/confirmation needed)
+        if (byte6 === 0x30) { zoomIn(device);  return; }  // dots 5+6
+        if (byte6 === 0x06) { zoomOut(device); return; }  // dots 2+3
+
+        // Object jump
+        if (byte6 === 0x01) { jumpCursorToObject(-1, device); return; }  // dot1 → prev
+        if (byte6 === 0x08) { jumpCursorToObject(+1, device); return; }  // dot4 → next
+
+        // Any other key resets the move-acceleration counter
+        lastMoveDir = null; moveDirCount = 0;
+
+        if (letter === 'v') {
+          cursorVisible = !cursorVisible;
+          renderCanvas(device);
+          logKey(`cursor  →  ${cursorVisible ? 'visible' : 'hidden'}`);
+          return;
+        }
+        if (letter === 's') {
+          const over = currentObject();
+          if (over) {
+            const isSelected = over.getAttribute('data-selected') === 'true';
+            if (isSelected) {
+              removeFromSelection(over);
+              renderCanvas(device);
+              sendMessage('deselected', device);
+              logKey(`s  →  deselected ${shapeName(over)}`);
+            } else {
+              addToSelection(over);
+              renderCanvas(device);
+              sendMessage(`${shapeName(over)} selected`, device);
+              logKey(`s  →  selected ${shapeName(over)}`);
+            }
+          } else {
+            sendMessage('no object', device);
+            logKey('s  →  no object under cursor');
+          }
+          return;
+        }
+        if (letter === 'e') {
+          const over = currentObject();
+          if (!over) {
+            sendMessage('no object', device);
+            logKey('e  →  no object under cursor');
+          } else {
+            enterActionMode(over, device);
+          }
+          return;
+        }
+        if (letter === 'n') { enterNewObject(device); return; }
+        if (letter === 'o') { appMode = 'overview'; renderOverview(device); logKey('overview  →  shown'); return; }
+
+        // Default: show raw dot pattern on message line
+        const cellHex = byte6.toString(16).padStart(2, '0').toUpperCase();
+        const msgHex  = cellHex + '00'.repeat(device.numberBrailleCellColumns - 1);
+        const zeros   = '00'.repeat(device.numberBrailleCellColumns);
+        sdk.displayTextData(zeros,  device, DisplayMode.TextMode);
+        sdk.displayTextData(msgHex, device, DisplayMode.TextMode);
+        logKey(letter ? `${label}  →  "${letter}"` : `${label}  →  ${msgHex}`);
+      }
+    );
+
+    // ── Event handlers ──────────────────────────────────────────────────────
+    btnConnect.addEventListener('click', async () => {
+      btnConnect.disabled    = true;
+      connStatus.textContent = 'scanning…';
+      try {
+        const bleDevice = await scanner.startBleScan();
+        if (!bleDevice) {
+          connStatus.textContent = 'no device selected';
+          btnConnect.disabled    = false;
+          return;
+        }
+        connStatus.textContent = 'connecting…';
+        const dotDevice = await sdk.connectBleDevice(bleDevice);
+        if (!dotDevice) {
+          connStatus.textContent = 'connection failed';
+          btnConnect.disabled    = false;
+        }
+      } catch (err) {
+        connStatus.textContent = `error: ${err.message}`;
+        btnConnect.disabled    = false;
+      }
+    });
+
+    btnDisconnect.addEventListener('click', () => {
+      if (currentDevice) sdk.disconnect(currentDevice);
+    });
+
+    async function sendSvg() {
+      if (!currentDevice) return;
+      const svg = mainSvg.value.trim();
+      if (!svg) return;
+
+      // Parse the pasted SVG into svgDoc so navigation, selection, and
+      // all other app logic work against the new shapes.
+      const parsed = svgParser.parseFromString(svg, 'image/svg+xml');
+      const parseErr = parsed.querySelector('parsererror');
+      if (parseErr) {
+        renderStatus.textContent = 'SVG parse error';
+        renderStatus.className   = 'error';
+        return;
+      }
+      svgDoc = parsed;
+
+      // Reset all app state that references the previous shape set.
+      appMode         = 'normal';
+      jumpAnchorId    = null;
+      newObjectIndex  = 0;
+      actionIndex     = 0;
+      actionTarget    = null;
+      moveSnapshot    = null;
+      resizeRpCount   = 0;
+      resizeLpCount   = 0;
+      activeShapeList = [];
+      ellipseF1       = null;
+      ellipseF2       = null;
+      ellipsePhase    = 1;
+
+      btnMainSend.disabled     = true;
+      renderStatus.textContent = 'Rendering…';
+      renderStatus.className   = '';
+
+      try {
+        await renderCanvas(currentDevice);
+        renderStatus.textContent = 'Sent.';
+      } catch (err) {
+        renderStatus.textContent = `Error: ${err.message}`;
+        renderStatus.className   = 'error';
+      } finally {
+        btnMainSend.disabled = false;
+      }
+    }
+
+    btnMainSend.addEventListener('click', sendSvg);
+
+    // ? key opens help; Esc closes it (also closes rename overlay)
+    document.addEventListener('keydown', e => {
+      if (e.key === '?' && !helpOverlay.classList.contains('open') &&
+          !document.getElementById('rename-overlay').classList.contains('open')) {
+        openHelp();
+        e.preventDefault();
+      } else if (e.key === 'Escape' && helpOverlay.classList.contains('open')) {
+        closeHelp();
+        e.preventDefault();
+      }
+    });
+  </script>
+
+</body>
+</html>
