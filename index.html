@@ -282,7 +282,7 @@
   <div id="rename-overlay">
     <div id="rename-dialog">
       <h3>Rename Object</h3>
-      <input id="rename-input" type="text" autocomplete="off" spellcheck="false"/>
+      <input id="rename-input" type="text" autocomplete="off" spellcheck="false" maxlength="20"/>
       <div class="dlg-buttons">
         <button id="rename-cancel-btn">Cancel</button>
         <button id="rename-ok-btn">OK</button>
@@ -565,10 +565,19 @@
     // ── Braille key chord → letter ───────────────────────────────────────────
     // Buttons: LP=dot3, 8=dot2, 4=dot1, 2=dot4, 1=dot5, RP=dot6
     // Key label format examples: "LP +0", "RP +4", "AP +12", "+7"
+    // nabccToChar: braille byte → printable ASCII character (6-dot patterns only).
+    // Lowercase letters take priority over any punctuation sharing the same pattern.
+    const nabccToChar = {};
     (function buildReverseNabcc() {
       window._nabccReverse = {};
-      for (let ch = 0x61; ch <= 0x7A; ch++) {
-        window._nabccReverse[NABCC[ch - 0x20]] = String.fromCharCode(ch);
+      for (let ascii = 0x20; ascii <= 0x7E; ascii++) {
+        const b = NABCC[ascii - 0x20];
+        if (b < 0x40 && !nabccToChar[b]) nabccToChar[b] = String.fromCharCode(ascii);
+      }
+      for (let ascii = 0x61; ascii <= 0x7A; ascii++) {
+        const b = NABCC[ascii - 0x20];
+        nabccToChar[b] = String.fromCharCode(ascii);       // lowercase wins conflicts
+        window._nabccReverse[b] = String.fromCharCode(ascii);
       }
     })();
 
@@ -1629,21 +1638,25 @@
     }
 
     // ── Rename dialog ─────────────────────────────────────────────────────────
-    const renameOverlay = document.getElementById('rename-overlay');
-    const renameInput   = document.getElementById('rename-input');
-    const renameOkBtn   = document.getElementById('rename-ok-btn');
+    const renameOverlay   = document.getElementById('rename-overlay');
+    const renameInput     = document.getElementById('rename-input');
+    const renameOkBtn     = document.getElementById('rename-ok-btn');
     const renameCancelBtn = document.getElementById('rename-cancel-btn');
+    let   renameFinish    = null;  // set by openRenameDialog; called by handleRenameKey
 
     function openRenameDialog(currentName, onConfirm, onCancel) {
       renameInput.value = currentName;
       renameOverlay.classList.add('open');
       renameInput.focus();
       renameInput.select();
+
       const finish = (confirmed) => {
+        renameFinish = null;
         renameOverlay.classList.remove('open');
-        renameOkBtn.onclick = null;
-        renameCancelBtn.onclick = null;
-        renameInput.onkeydown = null;
+        renameOkBtn.onclick       = null;
+        renameCancelBtn.onclick   = null;
+        renameInput.onkeydown     = null;
+        renameInput.oninput       = null;
         if (confirmed) {
           const v = renameInput.value.trim();
           if (v) onConfirm(v); else onCancel();
@@ -1651,12 +1664,50 @@
           onCancel();
         }
       };
+      renameFinish = finish;
+
+      // Sync message line when user types via QWERTY keyboard.
+      renameInput.oninput = () => {
+        if (currentDevice) sendMessage(renameInput.value || ' ', currentDevice);
+      };
+
       renameOkBtn.onclick     = () => finish(true);
       renameCancelBtn.onclick = () => finish(false);
       renameInput.onkeydown   = e => {
         if (e.key === 'Enter')  { e.preventDefault(); finish(true);  }
         if (e.key === 'Escape') { e.preventDefault(); finish(false); }
       };
+
+      // Show current name on message line immediately.
+      if (currentDevice) sendMessage(currentName || ' ', currentDevice);
+    }
+
+    // Braille input while rename dialog is open.
+    // dots 456 (0x38) = confirm, dots 56 (0x30) = backspace, else insert char.
+    function handleRenameKey(byte6, device) {
+      const DOTS_456 = 0x38, DOTS_56 = 0x30;
+      if (byte6 === DOTS_456) { renameFinish && renameFinish(true);  return; }
+      if (byte6 === DOTS_56)  {
+        const s = renameInput.selectionStart, e2 = renameInput.selectionEnd;
+        if (s !== e2) {
+          renameInput.value = renameInput.value.slice(0, s) + renameInput.value.slice(e2);
+          renameInput.selectionStart = renameInput.selectionEnd = s;
+        } else if (s > 0) {
+          renameInput.value = renameInput.value.slice(0, s - 1) + renameInput.value.slice(s);
+          renameInput.selectionStart = renameInput.selectionEnd = s - 1;
+        }
+        sendMessage(renameInput.value || ' ', device);
+        return;
+      }
+      const ch = nabccToChar[byte6];
+      if (!ch) return;
+      const s = renameInput.selectionStart, e2 = renameInput.selectionEnd;
+      const cur = renameInput.value;
+      const next = cur.slice(0, s) + ch + cur.slice(e2);
+      if (next.length > 20) return;
+      renameInput.value = next;
+      renameInput.selectionStart = renameInput.selectionEnd = s + 1;
+      sendMessage(renameInput.value, device);
     }
 
     // ── Move mode ─────────────────────────────────────────────────────────────
@@ -2444,7 +2495,7 @@
         const byte6  = labelToByte6(label);
         const letter = byte6ToLetter(byte6);
 
-        if (appMode === 'dialog')       { return; }
+        if (appMode === 'dialog')       { handleRenameKey(byte6, device); return; }
         if (appMode === 'overview')     { appMode = 'normal'; renderCanvas(device); logKey('overview  →  dismissed'); return; }
         if (appMode === 'new-object')   { handleNewObjectKey(byte6, label, device);   return; }
         if (appMode === 'action')       { handleActionKey(byte6, label, device);      return; }
